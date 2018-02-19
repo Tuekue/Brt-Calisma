@@ -90,8 +90,8 @@ void setup() {
   pinMode(plusPin, INPUT_PULLUP);
   pinMode(minusPin, INPUT_PULLUP);
 
-  minute = 10;
-  second = 03;
+  minute = 05;
+  second = 00;
   start = true;
 
   mlx.begin();
@@ -144,7 +144,7 @@ void heaterFunction () {
 
   static int mlxReading = 0;
 
-  if (isRunning == 0) {
+  if (isRunning == false) {
     Serial.println("Runninggg");
     mlxReading = mlx.readObjectTempC();
 
@@ -166,9 +166,9 @@ void heaterFunction () {
 //    }
 
   } else {
-    // targetHeat = 30;
+    // targetHeat = 80;
     setHeater();
-    calcDigits(30);
+    calcDigits(80);
     digitBuffer[2] = hundreds;
     digitBuffer[1] = tens;
     digitBuffer[0] = ones;
@@ -263,11 +263,14 @@ void loop()
 {
 
   static int startStopPinState = 0;
-
-  isRunning = true; // test için.daha sonra kapat
-
-  startStopPinState = HIGH; //digitalRead(startStopPin);
-  if (startStopPinState == HIGH)
+/* test için.daha sonra kapat
+  //isRunning = true; // test için.daha sonra kapat
+  //startStopPinState = HIGH; //
+*/
+*
+ */
+   startStopPinState = digitalRead(startStopPin);
+  if (startStopPinState == HIGH  && millis() - lastUpdate > updateInterval)
   {
     if (isRunning)
     {
@@ -281,7 +284,6 @@ void loop()
     }
   }
   heaterFunction();
-
 
   if (start == true && millis() - lastUpdate > updateInterval)
   {
@@ -300,6 +302,26 @@ void loop()
     countDown();
     second--;
   }
+  /*
+  if (start != true)
+  {
+      //digitalRead(plusPin);
+     if (digitalRead(plusPin) == HIGH && millis() - lastUpdate > updateInterval)
+     {
+       lastUpdate = millis();
+       
+       minute++;
+     }
+       //digitalRead(minusPin);
+     if (digitalRead(minusPin) == HIGH && millis() - lastUpdate > updateInterval)
+     {
+      lastUpdate = millis();
+      minute--;
+     }
+  }
+*/
+
+
 
   //delay (20);
 }

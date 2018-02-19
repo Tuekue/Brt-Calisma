@@ -46,7 +46,7 @@ int second;
 boolean start;
 
 //heat sensor start
-int targetHeat = 30;
+int targetHeat = 80;
 int targetDelta = 2; // Hedef sicaklik icin +/- aralık
 
 int startStopPin = A2;
@@ -63,121 +63,30 @@ int transInt = 30;  // Buton basma bekleme süresi. Hızlı basmayı engellemek 
 
 //heat sensor end
 
+static int startStopPinState = 0;
+unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
+unsigned long debounceDelay = 500;    // the debounce time; increase if the output flickers
+
+
+int lastStartState = LOW;
 boolean isRunning = false;
 unsigned long lastUpdate = 0; // prev tick for seconds
-int  updateInterval = 1000;  //1000 milisecond -> 1 second
+unsigned long minuslastUpdate = 0; 
+unsigned long pluslastUpdate = 0; 
+unsigned long updateInterval = 1000;  //1000 milisecond -> 1 second
 
-void setup() {
-  Serial.begin(9600);
-
-  pinMode(minuteLATCH, OUTPUT);
-  pinMode(minuteCLK, OUTPUT);
-  pinMode(minuteDATA, OUTPUT);
-
-  pinMode(secondLATCH, OUTPUT);
-  pinMode(secondCLK, OUTPUT);
-  pinMode(secondDATA, OUTPUT);
-
-  pinMode(heatLATCH, OUTPUT);
-  pinMode(heatCLK, OUTPUT);
-  pinMode(heatDATA, OUTPUT);
-  for (int i = 0; i < 3; i++)
-  {
-    pinMode(digitPins[i], OUTPUT);
+void calcDigits(int num)
+{
+  ones = num % 10;
+  if (num < 10) {
+    tens = 0;
   }
-
-  pinMode(startStopPin, INPUT_PULLUP);
-  pinMode(plusPin, INPUT_PULLUP);
-  pinMode(minusPin, INPUT_PULLUP);
-
-  minute = 05;
-  second = 00;
-  start = true;
-
-  mlx.begin();
-  Serial.println("setup complete");
+  else {
+    tens = num / 10;
+    hundreds = num / 100;
+  }
+  return;
 }
-
-void setHeater () {
-  valup = digitalRead(plusPin);
-  valdown = digitalRead(minusPin);
-
-  if (valup == HIGH && prevvalup == LOW) //funcitons based off of button pulling input pin LOW
-  {
-    if ((!isRunning) && (millis() - lastBtnUp > transInt))
-    {
-      // increase heat
-      targetHeat++;
-      calcDigits(targetHeat);
-      digitBuffer[2] = hundreds;
-      digitBuffer[1] = tens;
-      digitBuffer[0] = ones;
-      displayHeatDigits();
-
-      //sevseg.write(targetHeat);
-    }
-    lastBtnUp = millis();
-  }
-  prevvalup = valup;
-
-  if (valdown == HIGH && prevvaldown == LOW) //funcitons based off of button pulling input pin LOW
-  {
-    if ((!isRunning) && (millis() - lastBtnDwn > transInt))
-    {
-      // decrease heat
-      targetHeat--;
-      calcDigits(targetHeat);
-      digitBuffer[2] = hundreds;
-      digitBuffer[1] = tens;
-      digitBuffer[0] = ones;
-      displayHeatDigits();
-
-      //      sevseg.write(targetHeat);
-    }
-    lastBtnDwn = millis();
-  }
-  prevvaldown = valdown;
-
-} //setHeater
-
-void heaterFunction () {
-
-  static int mlxReading = 0;
-
-  if (isRunning == false) {
-    Serial.println("Runninggg");
-    mlxReading = mlx.readObjectTempC();
-
-    calcDigits(mlxReading);
-    digitBuffer[2] = ones;
-    digitBuffer[1] = tens;
-    digitBuffer[0] = hundreds;
-
-    displayHeatDigits();
-    //sevseg.write(mlxReading);
-
-//    if (mlxReading - targetDelta < targetHeat) {
-//      //Relay çekilsin heater açılsın
-//
-//    }
-//    if (mlxReading + targetDelta > targetHeat ) {
-//      // Relay bırakılsın heater kapansın
-//
-//    }
-
-  } else {
-    // targetHeat = 80;
-    setHeater();
-    calcDigits(80);
-    digitBuffer[2] = hundreds;
-    digitBuffer[1] = tens;
-    digitBuffer[0] = ones;
-    displayHeatDigits();
-
-    //    sevseg.write(targetHeat);
-  }
-} //heaterFunction
-
 void displayHeatDigits()
 {
 
@@ -217,18 +126,80 @@ void displayHeatDigits()
   //  digitalWrite(heatLATCH, HIGH);
 }
 
-void calcDigits(int num)
-{
-  ones = num % 10;
-  if (num < 10) {
-    tens = 0;
+void setHeater () {
+  valup = digitalRead(plusPin);
+  valdown = digitalRead(minusPin);
+
+  if (!isRunning) 
+  {
+    if (valup  != prevvalup && (millis() - lastBtnUp > transInt))
+      {
+        // increase heat
+        targetHeat++;
+        calcDigits(targetHeat);
+        digitBuffer[2] = hundreds;
+        digitBuffer[1] = tens;
+        digitBuffer[0] = ones;
+        displayHeatDigits();
+        //sevseg.write(targetHeat);
+      }
+      lastBtnUp = millis();
+    prevvalup = valup;
+    
+    if (valdown  != prevvaldown && (millis() - lastBtnDwn > transInt))
+      {
+        // decrease heat
+        targetHeat--;
+        calcDigits(targetHeat);
+        digitBuffer[2] = hundreds;
+        digitBuffer[1] = tens;
+        digitBuffer[0] = ones;
+        displayHeatDigits();
+        //      sevseg.write(targetHeat);
+      }
+      lastBtnDwn = millis();   
+      prevvaldown = valdown;
+    }
+} //setHeater
+
+void heaterFunction () {
+
+  static int mlxReading = 0;
+
+  if (isRunning == true) {
+    //Serial.println("Runninggg");
+    mlxReading = mlx.readObjectTempC();
+
+    calcDigits(mlxReading);
+    digitBuffer[2] = ones;
+    digitBuffer[1] = tens;
+    digitBuffer[0] = hundreds;
+
+    displayHeatDigits();
+    //sevseg.write(mlxReading);
+
+//    if (mlxReading - targetDelta < targetHeat) {
+//      //Relay çekilsin heater açılsın
+//
+//    }
+//    if (mlxReading + targetDelta > targetHeat ) {
+//      // Relay bırakılsın heater kapansın
+//
+//    }
+
+  } else {
+    // targetHeat = 80;
+    setHeater();
+    calcDigits(targetHeat);
+    digitBuffer[2] = hundreds;
+    digitBuffer[1] = tens;
+    digitBuffer[0] = ones;
+    displayHeatDigits();
+
+    //    sevseg.write(targetHeat);
   }
-  else {
-    tens = num / 10;
-    hundreds = num / 100;
-  }
-  return;
-}
+} //heaterFunction
+
 
 void countDown ()
 {
@@ -258,24 +229,59 @@ void displayMinuteDigits(int one, int ten)
 
 }
 
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(minuteLATCH, OUTPUT);
+  pinMode(minuteCLK, OUTPUT);
+  pinMode(minuteDATA, OUTPUT);
+
+  pinMode(secondLATCH, OUTPUT);
+  pinMode(secondCLK, OUTPUT);
+  pinMode(secondDATA, OUTPUT);
+
+  pinMode(heatLATCH, OUTPUT);
+  pinMode(heatCLK, OUTPUT);
+  pinMode(heatDATA, OUTPUT);
+  for (int i = 0; i < 3; i++)
+  {
+    pinMode(digitPins[i], OUTPUT);
+  }
+
+  pinMode(startStopPin, INPUT_PULLUP);
+  pinMode(plusPin, INPUT_PULLUP);
+  pinMode(minusPin, INPUT_PULLUP);
+
+  minute = 05;
+  second = 00;
+  start = false;
+  countDown();
+
+  mlx.begin();
+  Serial.println("setup complete");
+}
 
 void loop()
 {
 
-  static int startStopPinState = 0;
 /* test için.daha sonra kapat
   //isRunning = true; // test için.daha sonra kapat
   //startStopPinState = HIGH; //
 */
-*
- */
-   startStopPinState = digitalRead(startStopPin);
-  if (startStopPinState == HIGH  && millis() - lastUpdate > updateInterval)
+int reading = digitalRead(startStopPin);
+if (startStopPinState != lastStartState && (millis() - lastDebounceTime) > debounceDelay)
+{
+  lastDebounceTime = millis();
+  startStopPinState = reading;  
+  if(startStopPinState == HIGH)
   {
     if (isRunning)
     {
       // Stop basildi
       isRunning = false;
+      minute=05;
+      second=00;
+      countDown();
     }
     else
     {
@@ -283,9 +289,11 @@ void loop()
       isRunning = true;
     }
   }
-  heaterFunction();
+ }
+lastStartState = reading;
+heaterFunction();
 
-  if (start == true && millis() - lastUpdate > updateInterval)
+if (isRunning == true && millis() - lastUpdate > updateInterval)
   {
     lastUpdate = millis();
     if (second <= 0 )
@@ -302,26 +310,24 @@ void loop()
     countDown();
     second--;
   }
-  /*
-  if (start != true)
+  
+  if (isRunning == false)
   {
-      //digitalRead(plusPin);
-     if (digitalRead(plusPin) == HIGH && millis() - lastUpdate > updateInterval)
+     //digitalRead(plusPin);
+     Serial.println(digitalRead(minusPin));
+     if (digitalRead(plusPin) == HIGH && millis() - pluslastUpdate > updateInterval)
      {
-       lastUpdate = millis();
-       
+       pluslastUpdate = millis();       
        minute++;
+       
      }
        //digitalRead(minusPin);
-     if (digitalRead(minusPin) == HIGH && millis() - lastUpdate > updateInterval)
+     if (digitalRead(minusPin) == LOW && millis() - minuslastUpdate > updateInterval)
      {
-      lastUpdate = millis();
+      minuslastUpdate = millis();
       minute--;
      }
+     countDown();
   }
-*/
-
-
-
-  //delay (20);
 }
+

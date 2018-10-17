@@ -1,89 +1,78 @@
 #include <openGLCD.h>    // openGLCD library   
 #include <Bounce2.h>
-#include "lamp32x32.h"
+#include "lamba32x32.h"
+#include "nolamba32x32.h"
 
 #define relay1Pin 2
-#define relay2Pin 3
-#define startPin A6
-#define stopPin A7
+#define relay2Pin 13
+#define startPin 0
+#define stopPin 1
 #define singleDoublePin A5
 #define minutePlusPin 12
-#define minuteMinusPin 13
+#define minuteMinusPin 3
 
 int minute;
 int second;
 boolean start;
 
-int minuteValUp = 0;
-int minuteValDown = 0;
-
-int prevMinuteValUp = 0;
-int prevMinuteValDown = 0;
-
-unsigned long minuteLastBtnUp = 0;
-unsigned long minuteLastBtnUDown = 0;
-
-int transInt = 30;  // Buton basma bekleme sÃ¼resi. HÄ±zlÄ± basmayÄ± engellemek iÃ§in.
-
-static int startPinState = 0;
-static int stopPinState = 0;
-static int singleDoublePinState = 0;
-unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
-unsigned long debounceDelay = 5;    // the debounce time in ms. increase if the output flickers
-
-int lastStartState = LOW;
 boolean isRunning = false;
-int lambSelection = 1;
-
 unsigned long lastUpdate = 0; // prev tick for seconds
-unsigned long minuslastUpdate = 0;
-unsigned long pluslastUpdate = 0;
-
 unsigned long updateInterval = 1000;  //For UpdateTimer. 1000 milisecond -> 1 second
 
+int lambSelection = 2;
+
+unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
+unsigned long debounceDelay = 10;    // the debounce time in ms. increase if the output flickers
+
 // Instantiate a Bounce object
-Bounce OnOffDebouncer = Bounce();
-Bounce SingleDoubleDebouncer = Bounce();
+//Bounce OnOffDebouncer = Bounce(); // 2 tus ile yapilacagindan bu kullan?lmadi
 Bounce minPlusDebouncer = Bounce();
 Bounce minMinusDebouncer = Bounce();
+Bounce startDebouncer = Bounce();
+Bounce stopDebouncer = Bounce();
+Bounce lampDebouncer = Bounce();
 
 // GLCD variables
 gText  textTop = gText(textAreaTOP); // create a text area covering the top half of the display
 
+int minPlusRead;
+int minMinusRead;
+int startReading;
+int stopReading;
+int lampReading;
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // EOF declerations
+
 
 void SetTime()
 {
   //ilk olarak sure tuslarini kontrol ediyoruz.
-  minPlusDebouncer.update();
-  int minPlusRead = minPlusDebouncer.fell();
 
   if (minPlusRead == HIGH)
   {
     //dakika arttirmaya basildi
     Serial.println("min++");
     minute++;
-
   }
-  minMinusDebouncer.update();
-  int minMinusRead = minMinusDebouncer.fell();
+
   if (minMinusRead == HIGH)
   {
     Serial.println("min--");
     minute--;
+    if (minute <= 0) minute = 1;
   }
   UpdateTimer();
 }
 
-// Dakika ve saniye değerlerini LCD de gosterir
+// Dakika ve saniye de?erlerini LCD de gosterir
 void UpdateTimer ()
 {
   char buf[10];
 
   // format the time in a buffer
   snprintf(buf, sizeof(buf), "%02d:%02d", minute, second);
-  // draw the formatted string centered on the display
+  // draw the formatted string on the display
   GLCD.DrawString(buf, 0, 40);
 
 } //UpdateTimer
@@ -103,27 +92,42 @@ void StopExecute()
   UpdateTimer();
 
   // lambalari kapat
-  digitalWrite(relay1Pin, LOW);
   digitalWrite(relay2Pin, LOW);
+  delay(10);
+  digitalWrite(relay1Pin, LOW);
 }
 
-void ReadStartStopPin()
+void ReadStartPin()
 {
-  if (digitalRead(startPin) == HIGH) //functions based off of button pulling input pin LOW
+
+  if ( startReading == HIGH) //Start Tu? bas?ld?
   {
+    Serial.println("Start/Basildi");
     // Calismiyorsa calismaya basla. Calisiyorsa bir sey yapma
     if (isRunning == false) {
       // Start basildi
       Serial.println("Start");
-      StartExecute();
+      isRunning = true;
+      digitalWrite(relay1Pin, HIGH);
+      Serial.println(lambSelection);
+      if (lambSelection == 2) {
+        Serial.println("R�le 2 Acildi");
+        digitalWrite(relay2Pin, HIGH);
+      }
     }
   }
+
+}
+
+void ReadStopPin()
+{
   // Calisiyorsa dur. Calismiyorsa bir sey yapma
-  if (isRunning == true) {
-    if (digitalRead(stopPin) == HIGH) //functions based off of button pulling input pin LOW
-    {
+  if ( stopReading == HIGH) //Stop Basildi
+  {
+    Serial.println("Stop/Basildi");
+    if (isRunning == true) { //Calisiyor o zaman dur
       // Stop basildi
-      Serial.println("Stop");
+     Serial.println("Stop");
       StopExecute();
     }
   }
@@ -133,22 +137,23 @@ void ReadSingleDoublePin()
 {
   char buf[10];
 
-  SingleDoubleDebouncer.update();
-  int reading = SingleDoubleDebouncer.fell();
-  if ( reading == HIGH ) {
+  if ( lampReading == HIGH ) {
+    //    Serial.println("Tek/Cift basildi. Running kontrol edilecek");
     //Basildi
     // Eger calismiyorsa Tek/Cift lamp sectir
     if (isRunning == false)
     {
-      Serial.println("Tek/Cift basildi");
+      //      Serial.println("Tek/Cift basildi. Running kontrol done.");
+      //Serial.println(lambSelection);
       if (lambSelection == 2)
       {
         lambSelection = 1;
-      GLCD.DrawBitmap(lamba32x32, 97, 0);
+        GLCD.DrawBitmap(nolamba32x32, 97, 32);
+        GLCD.DrawBitmap(lamba32x32, 97, 0);
       } else {
         lambSelection = 2;
-      GLCD.DrawBitmap(lamba32x32, 97, 32);
-      GLCD.DrawBitmap(lamba32x32, 97, 0);
+        GLCD.DrawBitmap(lamba32x32, 97, 32);
+        GLCD.DrawBitmap(lamba32x32, 97, 0);
       }
 
     }
@@ -157,10 +162,12 @@ void ReadSingleDoublePin()
 }
 void setup()
 {
-  Serial.begin(9600);
+  Serial.begin(57600);
 
   pinMode(relay1Pin, OUTPUT);
   pinMode(relay2Pin, OUTPUT);
+  digitalWrite(relay1Pin, LOW);
+  digitalWrite(relay2Pin, LOW);
 
   GLCD.Init(); // initialize the display
   textTop.SelectFont(Callibri11); // select the system font for the text area name textTop
@@ -169,13 +176,24 @@ void setup()
   GLCD.SelectFont(lcdnums12x16);  // LCD looking font
   //  GLCD.SelectFont(fixednums15x31);// larger font
 
+
   pinMode(startPin, INPUT_PULLUP);
   pinMode(stopPin, INPUT_PULLUP);
   pinMode(minutePlusPin, INPUT_PULLUP);
   pinMode(minuteMinusPin, INPUT_PULLUP);
+  pinMode(singleDoublePin, INPUT_PULLUP);
+
 
   /////////////////////////////////////////
-  // Tuslar ve bekleme süreleri ayarlaniyor
+  // Tuslar ve bekleme s�releri ayarlaniyor
+  startDebouncer.attach(startPin);
+  startDebouncer.interval(debounceDelay);
+
+  stopDebouncer.attach(stopPin);
+  stopDebouncer.interval(debounceDelay);
+
+  lampDebouncer.attach(singleDoublePin);
+  lampDebouncer.interval(debounceDelay);
 
   minPlusDebouncer.attach(minutePlusPin);
   minPlusDebouncer.interval(debounceDelay);
@@ -183,28 +201,44 @@ void setup()
   minMinusDebouncer.attach(minuteMinusPin);
   minMinusDebouncer.interval(debounceDelay);
 
-  // Tuslar ve bekleme süreleri ayarlaniyor
+  // Tuslar ve bekleme s�releri ayarlaniyor
   /////////////////////////////////////////
 
-      GLCD.DrawBitmap(lamba32x32, 97, 32);
-      GLCD.DrawBitmap(lamba32x32, 97, 0);
-      
+  GLCD.DrawBitmap(lamba32x32, 97, 32);
+  GLCD.DrawBitmap(lamba32x32, 97, 0);
+
   StopExecute();
-  //StartExecute();
 
   Serial.println("setup complete");
-
 }
 
 void  loop()
 {
-  ReadStartStopPin();
+
+  minPlusDebouncer.update();
+  minPlusRead = minPlusDebouncer.fell();
+
+  minMinusDebouncer.update();
+  minMinusRead = minMinusDebouncer.fell();
+
+  startDebouncer.update();
+  startReading = startDebouncer.fell();
+
+  stopDebouncer.update();
+  stopReading = stopDebouncer.fell();
+
+  lampDebouncer.update();
+  lampReading = lampDebouncer.fell();
+
+
+  ReadStartPin();
+  ReadStopPin();
   ReadSingleDoublePin();
-  //Süre geri sayim islemi
+  //S�re geri sayim islemi
   if (isRunning == true ) {
     if (millis() - lastUpdate > updateInterval)
     {
-      lastUpdate = millis();  
+      lastUpdate = millis();
       second--;
       if (second <= 0 )
       {
@@ -215,7 +249,7 @@ void  loop()
           StopExecute();
         }
       }
-      UpdateTimer();    
+      UpdateTimer();
     }
   }
   if (isRunning == false)

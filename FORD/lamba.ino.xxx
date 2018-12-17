@@ -1,0 +1,213 @@
+/*
+  Cihazlar arası haberleşme için kullanılacak komut seti
+  'CMD 1' start process
+  'CMD 0' stop process
+  'LMP 1' lift down lamp
+  'LMP 0' lift up lamp
+  'DST XXX' Distance set to/read XXX (0-999 mm)
+  'TIM XXX' Lamp Working time set/remaining
+*/
+
+#include <NRFLite.h>
+#include <Wire.h>
+#include <VL53L0X.h>
+
+VL53L0X sensor;
+
+const static uint8_t PIN_RADIO_MOMI = 4;
+const static uint8_t PIN_RADIO_SCK = 1;
+const static uint8_t PIN_LDR = A1;
+const static uint8_t PIN_THERM = A3;
+const static uint8_t PIN_SENSOR_POWER = 0;
+
+const static uint8_t DESTINATION_RADIO_ID = 0;
+
+
+struct Settings
+{
+  uint8_t RadioId;
+  boolean Start; //0 Stop, 1 Start
+  uint8_t LampPosition; //1 lifting down, 0 lifting up
+  uint8_t Distance; //in mm
+  uint8_t TimeInterval; //Working time
+};
+
+struct RadioPacket2
+{
+  boolean Start; //0 Stop, 1 Start
+  uint8_t LampPosition; //1 lifting down, 0 lifting up
+  uint8_t Distance; //in mm
+  uint8_t TimeInterval; //Working time
+};
+
+struct MessagePacket
+{
+  uint8_t FromRadioId;
+  uint8_t message[31]; // Can hold a 30 character string + the null terminator.
+};
+
+enum ChangeType
+{
+  ChangeStart,
+  ChangeLampPosition,
+  ChangeDistance,
+  ChangeTimeInterval
+};
+
+struct NewSettingsPacket
+{
+  ChangeType ChangeType;
+  boolean NewStart; //0 Stop, 1 Start
+  uint8_t NewLampPosition; //1 lifting down, 0 lifting up
+  uint8_t NewDistance; //in mm
+  uint8_t NewTimeInterval; //Working time
+};
+
+NRFLite _radio;
+Settings _settings;
+uint32_t _failedTxCount;
+
+
+void processSettingsChange(NewSettingsPacket newSettings); // Need to pre-declare this function since it uses a custom struct as a parameter (or use a .h file instead).
+
+void setup()
+{
+  sensor.init();
+  sensor.setTimeout(500);
+
+  // Start continuous back-to-back mode (take readings as
+  // fast as possible).  To use continuous timed mode
+  // instead, provide a desired inter-measurement period in
+  // ms (e.g. sensor.startContinuous(100)).
+  sensor.startContinuous();
+
+  // Assign default values.
+  _settings.RadioId = 1;
+  _settings.Start = 0 ;           // Not working
+  _settings.LampPosition = 0;     // Upper side
+  _settings.Distance = 60;        // 60 mm
+  _settings.TimeInterval = 240;   // 240 sn=4 minutes
+
+  setupRadio();
+}
+
+void setupRadio()
+{
+  if (!_radio.initTwoPin(_settings.RadioId, PIN_RADIO_MOMI, PIN_RADIO_SCK, NRFLite::BITRATE250KBPS))
+  {
+    while (1); // Cannot communicate with radio.
+  }
+}
+
+void loop()
+{
+  delay(5); //wait between messages
+  RadioPacket radioData;
+  radioData.Start = _settings.Start;
+  radioData.Distance = readDistance();
+  radioData.LampPosition = _settings.LampPosition;
+  radioData.TimeInterval = _settings.TimeInterval;
+
+  if (_radio.send(DESTINATION_RADIO_ID, &radioData, sizeof(radioData)))
+  {
+    if (_radio.hasAckData())
+    {
+      NewSettingsPacket newSettingsData;
+      _radio.readData(&newSettingsData);
+      processSettingsChange(newSettingsData);
+      if (_settings.Start == 1)
+      {
+        startWorking();
+      }
+    }
+  }
+}
+
+int readDistance()
+{
+  return sensor.readRangeContinuousMillimeters();
+}
+
+void processSettingsChange(NewSettingsPacket newSettings)
+{
+  String msg;
+
+  if (newSettings.ChangeType == ChangeLampPosition)
+  {
+    // Buraya hiç girmemesi gerekiyor
+    msg = F("Yeni Lamba pozisyonu ");
+    msg += newSettings.NewLampPosition;
+    sendMessage(msg);
+
+    _settings.LampPosition = newSettings.NewLampPosition;
+    setupRadio();
+  }
+  else if (newSettings.ChangeType == ChangeDistance)
+  {
+    sendMessage(F("Yeni Mesafe"));
+    _settings.Distance = newSettings.NewDistance;
+  }
+  else if (newSettings.ChangeType == ChangeTimeInterval)
+  {
+    sendMessage(F("Yeni Süre"));
+    _settings.TimeInterval = newSettings.NewTimeInterval;
+  }
+  else if (newSettings.ChangeType == ChangeStart)
+  {
+    sendMessage(F("Çalışma Durumu"));
+    _settings.Start = newSettings.NewStart;
+  }
+}
+
+void sendMessage(String msg)
+{
+  MessagePacket messageData;
+  messageData.FromRadioId = _settings.RadioId;
+
+  // Ensure the message is not too large for the MessagePacket.
+  if (msg.length() > sizeof(messageData.message) - 1)
+  {
+    msg = msg.substring(0, sizeof(messageData.message) - 1);
+  }
+
+  msg.getBytes((unsigned char*)messageData.message, msg.length() + 1);
+  _radio.send(DESTINATION_RADIO_ID, &messageData, sizeof(messageData));
+}
+
+void startWorking()
+{
+  boolean isLiftDown = false;
+  boolean isLiftUp = false;
+
+  while (_settings.Distance < readDistance())
+  {
+    if (!isLiftDown)
+    {
+      // Lift Down rölesini çektir
+    }
+    isLiftDown = true;
+  }
+  // Lift Down rölesini bırak
+  isLiftDown = false;
+
+  // Uygun mesafeye geldik. Isıtmaya başlayabiliriz
+  // Timer başlat
+  // Lamba rölesini aç
+  // Fan rölesini aç
+
+  // Süre bitiminde Lambayı kapat
+  // 60 süre başlat -> lamba soğutma için fanların açık klacağı süre
+  // Lift Up rölesini çalıştır
+
+  while (readDistance() > 1000)
+  {
+    if (!isLiftUp)
+    {
+      // Lift Up rölesini çektir
+    }
+    isLiftUp = true;
+  }
+  // Lift Up rölesini bırak
+  isLiftUp = false;
+
+}

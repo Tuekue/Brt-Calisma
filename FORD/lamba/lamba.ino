@@ -20,8 +20,8 @@
 #include <VL53L0X.h>
 
 VL53L0X sensor;
-#define RLamba 4         //Lamba rölesi
-#define RFan 5           //Fan rölesi
+#define RLamba A0         //Lamba rölesi
+#define RFan A1           //Fan rölesi
 
 #define CE 9
 #define CSN 10
@@ -64,7 +64,7 @@ boolean buttonState = 0;
 
 
 void setup() {
-  Serial.begin(57600);
+  Serial.begin(115200);
   Serial.println("Start");
   pinMode(RLamba, OUTPUT);
   pinMode(RFan, OUTPUT);
@@ -81,7 +81,6 @@ void setup() {
   fanTimer = _fanTime;
 
   radio.begin();
-
   radio.enableDynamicPayloads();
   radio.enableAckPayload();                         // We will be using the Ack Payload feature, so please enable it
   radio.enableDynamicPayloads();                    // Ack payloads are dynamic payloads
@@ -89,10 +88,9 @@ void setup() {
   radio.openWritingPipe(addresses[0]); // 00002
   radio.openReadingPipe(1, addresses[1]); // 00001
   radio.setPALevel(RF24_PA_MIN);
+  radio.maskIRQ(1, 1, 0); //Mask all interrupts except the receive interrupt tx ok, tx fail, rx ready
 
-  attachInterrupt(0, radioInterrupt, LOW);
-
-
+  attachInterrupt(0, radioInterrupt, CHANGE);
 
   /* Saniyede 1 çalışacak kesme ayarlanıyor */
   cli();
@@ -125,12 +123,6 @@ ISR(TIMER1_COMPA_vect) {
     //süre bitti çalışma dursun
     //bu kısmı runProgram() fonksiyonu hallediyor
   }
-
-  // Çalışma bitti, fan 60sn daha çalışacak
-  if (timerSayac == 0 && fanTimer > 0) {
-    Serial.print("fanTimer: "); Serial.println(fanTimer);
-    fanTimer--;
-  }
 }
 
 
@@ -139,23 +131,25 @@ void loop() {
   /*
     //çalışma anı ile ilgili bölüm
     radio.startListening();
-    if ( radio.available()) {
-
+    if (radio.available()) {
       while (radio.available()) {
         radio.read(&message, sizeof(message));
+
+        Serial.print("Gelen Mesaj : "); Serial.println(message);
       }
 
       Serial.println("test");
-      delay(5);
       radio.stopListening();
-      message[31] = '\0';
+      //message[31] = '\0';
       Serial.print("Gelen Mesaj : "); Serial.println(message);
       //gelen mesaja göre değerleri set et yada çalışmaya başla
       processMessage(message);
     }
   */
+
   // Altta kupa var mı. Mesafe 1500 mm (1.5m) altında ise aşağıda bir şey var
   // sistem çalışmaya başlasın. (50 mm gecikme payı. deneme yanılma ile düzeltilecek)
+  //Serial.println(readDistance());
   if (readDistance() <= 1550) {
     isWorking = true;
     Serial.println("Kupa geldi... Çalış");
@@ -174,11 +168,12 @@ void radioInterrupt()
   boolean txOk, txFail, rxReady;
   radio.whatHappened(txOk, txFail, rxReady);
 
+  // Serial.print("Aha radyoda program başladı.");Serial.print(txOk);Serial.print( txFail);Serial.print( rxReady);
   if (rxReady)
   {
-
+    //   Serial.println("Bakalım neymiş");
     radio.read(&message, sizeof(message));
-    message[31] = '\0';
+    // message[31] = '\0';
     Serial.print("Gelen Mesaj : "); Serial.println(message);
     //gelen mesaja göre değerleri set et yada çalışmaya başla
     processMessage(message);
@@ -217,32 +212,35 @@ void radioInterrupt()
 
 void runProgram() {
   char msg[31];
-
+  Serial.print("startTimer"); Serial.println(startTimer);
   if (!startTimer) {
 
-    Serial.println("1111");
     // 1.adım İndirme işemini başlat
-    //radio.stopListening();
-    Serial.println("2222");
     strncpy( msg, "LMD0", sizeof(msg) );
-    Serial.println("3333");
     msg[sizeof(msg) - 1] = 0;
     Serial.println("4444");
-    radio.startWrite(msg, sizeof(msg), 0);
+    radio.stopListening();
+    Serial.println("I am writing");
+    if (!radio.write(msg, sizeof(msg))) {
+      Serial.println("Write Failed");
+    }
+    //radio.startWrite(msg, sizeof(msg), 0);
     Serial.println("5555");
     radio.startListening();
     Serial.println("1.adım İndirme işemini başlat");
     while (readDistance() < Distance) {
-      Serial.println(readDistance());
+      Serial.print("Distance: "); Serial.print(readDistance()); Serial.print("  test value : "); Serial.println(Distance);
     }
     // Okunan Mesafe Distance'dan küçük olduğu sürece bekle. Default 600mm
     //   radio.stopListening();
     //Lamba inişini durdur.
     strncpy( msg, "LMD0", sizeof(msg) );
     msg[sizeof(msg) - 1] = 0;
-    //    radio.write(msg, sizeof(msg));
-    radio.startWrite(msg, sizeof(msg), 0);
-    //    radio.startListening();
+
+    Serial.println("I am writing 2");
+    radio.write(msg, sizeof(msg));
+    //radio.startWrite(msg, sizeof(msg), 0);
+    radio.startListening();
     Serial.println("Lamba inişini durdur. ");
     // 2.adım Lambayı Yak
     digitalWrite(RLamba, HIGH);
@@ -255,41 +253,46 @@ void runProgram() {
   }
 
   if (startTimer) {
+    Serial.print("Timersayac:"); Serial.println(timerSayac);
 
     if (timerSayac == 0) {
       // 4.adım Süre bitti ise Lambayı kapat, Yukarı kaldır
       digitalWrite(RLamba, LOW);
       // İkinci Süreyi başlat 60sn
 
-      //radio.stopListening();
+      radio.stopListening();
       strncpy( msg, "LMU1", sizeof(msg) );
       msg[sizeof(msg) - 1] = 0;
-      radio.startWrite(msg, sizeof(msg), 0);
-      //radio.write(msg, sizeof(msg));
-      //radio.startListening();
+      //radio.startWrite(msg, sizeof(msg), 0);
+
+      Serial.println("I am writing 3");
+      radio.write(msg, sizeof(msg));
+      radio.startListening();
 
 
       while (readDistance() > sifirPozisyonu);
       // sifirPozisyonu na gelene kadar kaldır.
       // Kaldırma rölesini kapat
 
-      //radio.stopListening();
+      radio.stopListening();
       strncpy( msg, "LMU0", sizeof(msg) );
       msg[sizeof(msg) - 1] = 0;
-      radio.startWrite(msg, sizeof(msg), 0);
-      //radio.write(msg, sizeof(msg));
-      //radio.startListening();
+      //radio.startWrite(msg, sizeof(msg), 0);
+
+      Serial.println("I am writing 4");
+      radio.write(msg, sizeof(msg));
+      radio.startListening();
 
     }
-    if (fanTimer == 0) {
-      // İkinci süre bittiyse Fan rölesini kapat
-      digitalWrite(RLamba, LOW);
-      // Çalışmayı durdur ve süreleri sıfırla
-      startTimer = false;
-      isWorking = false;
-      fanTimer = _fanTime;
-      timerSayac = TimeInterval;
-    }
+    //    if (fanTimer == 0) {
+    //      // İkinci süre bittiyse Fan rölesini kapat
+    //      digitalWrite(RLamba, LOW);
+    //      // Çalışmayı durdur ve süreleri sıfırla
+    //      startTimer = false;
+    //      isWorking = false;
+    //      fanTimer = _fanTime;
+    //      timerSayac = TimeInterval;
+    //    }
   }
 }
 
@@ -299,6 +302,7 @@ void processMessage(String input) {
   if (!isWorking) {//Lamba meşgul değilse
     if (input.startsWith("CMD"))
     {
+      Serial.println("CMD gelmiş");
       if (input.substring(4, 1) == "1") {
         // Start komutu geldi.
         isWorking = true;
@@ -307,14 +311,17 @@ void processMessage(String input) {
     }
     else if (input.startsWith("LMP"))
     {
+      Serial.println("LMP gelmiş");
       // Lamba indir kaldır komutla olmaz
     }
     else if (input.startsWith("DST"))
     {
+      Serial.println("DST Gelömiş");
       String Tmp = input.substring(4, 3);
       Distance = Tmp.toInt();
     }
     else if (input.startsWith("TIM")) {
+      Serial.println("TIM Gelmiş");
       String Tmp = input.substring(4, 3);
       TimeInterval = Tmp.toInt();
       timerSayac = TimeInterval;
@@ -326,5 +333,5 @@ int readDistance() {
   int okunanMesafe;
   okunanMesafe = sensor.readRangeContinuousMillimeters();
   Serial.println("Mesafe : " + okunanMesafe);
-  return okunanMesafe;
+  return sensor.readRangeContinuousMillimeters();
 }

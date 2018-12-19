@@ -15,11 +15,13 @@
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
-#include <openGLCD.h>    // openGLCD library   
+// #include <openGLCD.h>    // openGLCD library
+
+#include <I2C_graphical_LCD_display.h>
 #include <Bounce2.h>
 
-#define LCD_SS 2            //Star Butonu
-#define StartPin 3          //Star Butonu
+#define LCD_SS 2            //LCD SS
+#define StartPin 3          //Start Butonu
 #define StopPin 4           //Stop Butonu
 #define TimeUpPin 5         //Zaman Artırma Butonu
 #define TimeDownPin 6       //Zaman Azaltma Butonu
@@ -27,15 +29,13 @@
 #define DistanceDownPin 8   //Mesafe Azaltma Butonu
 #define RLiftDown A0        //Alçaltma rölesi
 #define RLiftUp A1          //Yükseltme rölesi
-#define limitswitchUpPin A2     //Mesafe Artırma Butonu
-#define limitswitchDownPin A3   //Mesafe Azaltma Butonu
-#define CE 9
-#define CSN 10
-#define MOSI 11
-#define MISO 12
-#define SCK 13
-
-#define _fanTime 60
+#define heatUpPin A2        //Sıcaklık Artırma Butonu
+#define heatDownPin A3      //Sıcaklık Azaltma Butonu
+#define CE 9                //RF24 CE
+#define CSN 10              //RF24 CSN
+#define MOSI 11             //RF24 MOSI
+#define MISO 12             //RF24 MISO
+#define SCK 13              //RF24 SCK
 
 RF24 radio(CE, CSN);
 
@@ -49,9 +49,8 @@ Bounce startDebouncer = Bounce();
 Bounce stopDebouncer = Bounce();
 Bounce DistUpDebouncer = Bounce();
 Bounce DistDownDebouncer = Bounce();
-Bounce limitswitchUpDebouncer = Bounce();
-Bounce limitswitchDownDebouncer = Bounce();
-
+Bounce heatUpDebouncer = Bounce();
+Bounce heatDownDebouncer = Bounce();
 
 int startReading;
 int stopReading;
@@ -59,7 +58,8 @@ int timeUpReading;
 int timeDownReading;
 int distUpReading;
 int distDownReading;
-
+int heatDownReading;
+int heatUpReading;
 
 uint8_t RadioId;
 boolean Start;          //0 Stop, 1 Start
@@ -69,22 +69,25 @@ uint8_t LCDDistance;    // cm cinsinden
 uint8_t sifirPozisyonu;
 uint8_t TimeInterval;   //Working time saniye
 uint8_t LCDTimeInterval;//Working time dakika
-uint8_t fanTimer;
+uint8_t sicaklik;
 
 uint8_t minute;
 uint8_t second;
 boolean startTimer;
 
-
+char msg[31];
 String message;    // Can hold a 30 character string + the null terminator.
+
 boolean isWorking;
 
 // GLCD variables
-gText  textTop = gText(textAreaTOP); // create a text area covering the top half of the display
+//gText  textTop = gText(textAreaTOP); // create a text area covering the top half of the display
+
+I2C_graphical_LCD_display lcd;
 
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("Start");
   pinMode(StartPin, INPUT_PULLUP);
   pinMode(StopPin, INPUT_PULLUP);
@@ -92,8 +95,8 @@ void setup() {
   pinMode(TimeDownPin, INPUT_PULLUP);
   pinMode(DistanceUpPin, INPUT_PULLUP);
   pinMode(DistanceDownPin, INPUT_PULLUP);
-  pinMode(limitswitchUpPin, INPUT_PULLUP);
-  pinMode(limitswitchDownPin, INPUT_PULLUP);
+  pinMode(heatUpPin, INPUT_PULLUP);
+  pinMode(heatDownPin, INPUT_PULLUP);
 
   pinMode(13, OUTPUT);
   pinMode(RLiftUp, OUTPUT);
@@ -116,10 +119,10 @@ void setup() {
   DistDownDebouncer.attach(DistanceDownPin);
   DistDownDebouncer.interval(debounceDelay);
 
-  limitswitchUpDebouncer.attach(DistanceDownPin);
-  limitswitchUpDebouncer.interval(debounceDelay);
-  limitswitchDownDebouncer.attach(DistanceDownPin);
-  limitswitchDownDebouncer.interval(debounceDelay);
+  heatUpDebouncer.attach(DistanceDownPin);
+  heatUpDebouncer.interval(debounceDelay);
+  heatDownDebouncer.attach(DistanceDownPin);
+  heatDownDebouncer.interval(debounceDelay);
 
   //default values
   isWorking = false;
@@ -131,7 +134,7 @@ void setup() {
   sifirPozisyonu = 400; // in mm
   TimeInterval = 240; //Working time 4min default
   LCDTimeInterval = 4; //Working time 4min default to show on LCD
-  fanTimer = _fanTime;
+  sicaklik = 80; //80 derece
 
   minute = TimeInterval;
   second = 0;
@@ -141,12 +144,22 @@ void setup() {
     textTop.println("www.brsservis.com"); // print a line of text to the text area.
     GLCD.SelectFont(lcdnums12x16);  // LCD looking font
   */
+
+
+  lcd.begin ();
+  TWBR = 12;
+  lcd.gotoxy(0, 0);
+  lcd.string("www.brsservis.com");
+
   radio.begin();
   radio.openWritingPipe(addresses[1]); // 00001
   radio.openReadingPipe(1, addresses[0]); // 00002
   radio.setPALevel(RF24_PA_MIN);
+  radio.maskIRQ(1, 1, 0); //Mask all interrupts except the receive interrupt tx ok, tx fail, rx ready
 
-  /* Saniyede 1 çalışacak kesme ayarlanıyor */  
+  attachInterrupt(0, radioInterrupt, FALLING);
+
+  /* Saniyede 1 çalışacak kesme ayarlanıyor */
   cli();
   /* Ayarlamaların yapılabilmesi için öncelikle kesmeler durduruldu */
 
@@ -186,23 +199,18 @@ ISR(TIMER1_COMPA_vect) {
         second = 0;
       }
     }
-
+    printValues2LCD();
+    /*
     snprintf(buf, sizeof(buf), "%02d:%02d", minute, second);
     // draw the formatted string on the display
-    GLCD.DrawString(buf, 0, 40);
+    lcd.gotoxy (0, 40);
+    lcd.string(buf);
+    */
   }
 }
 
 void loop()
 {
-  Serial.println("Rlift HIGH");
-  digitalWrite(13, HIGH);
-  //digitalWrite(RLiftUp, HIGH);
-  delay(100);
-  Serial.println("Rlift LOW");
-  digitalWrite(13, LOW);
-  //digitalWrite(RLiftUp, LOW);
-  delay(100);
   TimeUpDebouncer.update();
   timeUpReading = TimeUpDebouncer.fell();
   TimeDownDebouncer.update();
@@ -215,54 +223,67 @@ void loop()
   distUpReading = DistUpDebouncer.fell();
   DistDownDebouncer.update();
   distDownReading = DistDownDebouncer.fell();
-
-
-  // Limit switche geldi ise ilgili motoru durdur.
-  if (limitswitchDownDebouncer.fell())
-  {
-    // LiftDown motoru dursun
-    digitalWrite(RLiftDown, LOW);
-  }
-  if (limitswitchUpDebouncer.fell())
-  {
-    // LiftUp motoru dursun
-    digitalWrite(RLiftUp, LOW);
-  }
+  heatDownDebouncer.update();
+  heatDownReading = heatDownDebouncer.fell();
+  heatUpDebouncer.update();
+  heatUpReading = heatDownDebouncer.fell();
 
   processButtons();
 
-  radio.startListening();
-  if ( radio.available()) {
-    while (radio.available()) {
-      radio.read(&message, sizeof(message));
-      if (message.startsWith("LMD")) {
-        digitalWrite(RLiftUp, LOW);
-        if (message.substring(4, 1) == "1") {
-          // LMP mesajı 1 geldi. İndirme işemini başlat
-          digitalWrite(RLiftDown, HIGH);
-        }
-        if (message.substring(4, 1) == "0") {
-          // LMP mesajı 0 geldi. İndirme işemini durdur.
-          digitalWrite(RLiftDown, LOW);
-        }
-      }
-      if (message.startsWith("LMPU")) {
-        digitalWrite(RLiftDown, LOW);
-        if (message.substring(4, 1) == "1") {
-          // LMU mesajı 1 geldi. Kaldırma işlemine başla
-          digitalWrite(RLiftUp, HIGH);
-        }
-        if (message.substring(4, 1) == "0") {
-          // LMU mesajı 0 geldi. Kaldırma işlemini durdur
-          digitalWrite(RLiftUp, LOW);
-        }
-      }
-    }
-    delay(5);
-    radio.stopListening();
-    // Gelenmesajları LCD üzerinde göster
-    processMessage(message);
+}
+
+void radioInterrupt() {
+
+  boolean txOk, txFail, rxReady;
+  radio.whatHappened(txOk, txFail, rxReady);
+  //Serial.print("Interrupted"); Serial.print(txOk); Serial.print( txFail); Serial.println( rxReady);
+  // Serial.print("Aha radyoda program başladı.");Serial.print(txOk);Serial.print( txFail);Serial.print( rxReady);
+  if (rxReady)
+  {
+
+    //  radio.startListening();
+    //  if (radio.available()) {
+    //    while (radio.available()) {
+    radio.read(&message, sizeof(message));
+    Serial.println(message);
   }
+
+  if (message.startsWith("LMD")) {
+    digitalWrite(RLiftUp, LOW);
+    if (message.substring(4, 1) == "1") {
+      // LMP mesajı 1 geldi. İndirme işemini başlat
+      digitalWrite(RLiftDown, HIGH);
+    }
+    if (message.substring(4, 1) == "0") {
+      // LMP mesajı 0 geldi. İndirme işemini durdur.
+      digitalWrite(RLiftDown, LOW);
+    }
+  }
+  if (message.startsWith("LMPU")) {
+    digitalWrite(RLiftDown, LOW);
+    if (message.substring(4, 1) == "1") {
+      // LMU mesajı 1 geldi. Kaldırma işlemine başla
+      digitalWrite(RLiftUp, HIGH);
+    }
+    if (message.substring(4, 1) == "0") {
+      // LMU mesajı 0 geldi. Kaldırma işlemini durdur
+      digitalWrite(RLiftUp, LOW);
+    }
+  }
+  //  radio.stopListening();
+  //  strncpy( msg, "Message", sizeof(msg) );
+  //  radio.write(&msg, sizeof(msg));
+
+  // Gelenmesajları LCD üzerinde göster
+  /*
+
+
+    processMessage(message);
+
+
+
+
+  */
 }
 
 
@@ -295,6 +316,17 @@ void processButtons() {
     Distance = LCDDistance * 10; //mm çevir
     Serial.println("Distance : " + Distance);
   }
+  if (heatDownReading == HIGH)
+  {
+    sicaklik --;
+    Serial.println("Sicaklik : " + sicaklik);
+  }
+  if (heatUpReading == HIGH)
+  {
+    sicaklik ++;
+    Serial.println("Sicaklik : " + sicaklik);
+  }
+
   if (startReading == HIGH) {
     Serial.println("Start Working...." );
 
@@ -303,18 +335,22 @@ void processButtons() {
     second = 0;
     radio.stopListening();
     message = "TIM" + String(TimeInterval); //TimeInterval saniye cinsinden iletilir.
-    radio.write(&message, sizeof(message));
+    //radio.write(&message, sizeof(message));
     delay(5);
+    radio.startListening();
     message = "DST" + String(Distance);     // Mesafe cm cinsinden iletilir
-    radio.write(&message, sizeof(message));
+    radio.stopListening();
+    //radio.write(&message, sizeof(message));
     delay(5);
+    radio.startListening();
     /*
         message = "LMP1" + String();
         radio.write(&message, sizeof(message));
         delay(5);
     */
     message = "CMD1";
-    radio.write(&message, sizeof(message));
+    radio.stopListening();
+    //radio.write(&message, sizeof(message));
     delay(5);
     radio.startListening();
   }
@@ -324,31 +360,49 @@ void processButtons() {
     isWorking = false;
     radio.stopListening();
     message = "CMD0";
-    radio.write(&message, sizeof(message));
+    //radio.write(&message, sizeof(message));
     delay(5);
+    radio.startListening();
     message = "TIM" + String(TimeInterval);
-    radio.write(&message, sizeof(message));
+    //radio.write(&message, sizeof(message));
+    radio.stopListening();
     delay(5);
+    radio.startListening();
     message = "DST" + String(Distance);
-    radio.write(&message, sizeof(message));
+    radio.stopListening();
+    //radio.write(&message, sizeof(message));
     delay(5);
+    radio.startListening();
     /*
         message = "LMP0";
         radio.write(&message, sizeof(message));
         delay(5);
     */
-    radio.startListening();
   }
 }
-
+void printValues2LCD() {
+  lcd.begin();  //clear everything ??
+  lcd.gotoxy(40, 0);
+  char buf[30];
+  snprintf(buf, sizeof(buf), "DIST:%02d TEMP:%02d TIME:%02d", LCDDistance, sicaklik, TimeInterval);
+  lcd.string(buf);
+}
 void processMessage(String input) {
   input.toUpperCase();
   char buf[10];
 
-  // format the time in a buffer
-  snprintf(buf, sizeof(buf), "%02d:%02d", minute, second);
-  // draw the formatted string on the display
-  GLCD.DrawString(buf, 0, 40);
+  /* Herşeyi foksiyon yazdırsın
+
+    // format the time in a buffer
+    snprintf(buf, sizeof(buf), "%02d:%02d", minute, second);
+    // draw the formatted string on the display
+    lcd.gotoxy (0, 40);
+    lcd.string(buf);
+
+  */
+
+
+  printValues2LCD();
 
   // Gelen mesajı işeyip LCD'de göster
 }

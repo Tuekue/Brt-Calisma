@@ -16,9 +16,18 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 // #include <openGLCD.h>    // openGLCD library
-
-#include <I2C_graphical_LCD_display.h>
+#include <U8g2lib.h>
 #include <Bounce2.h>
+
+U8G2_ST7920_128X64_F_SW_SPI u8g2(U8G2_R0, /* clock=*/ 13, /* data=*/ 11, /* CS=*/ 10, /* reset=*/ U8X8_PIN_NONE);
+#ifdef U8X8_HAVE_HW_SPI
+#include <SPI.h>
+#endif
+#ifdef U8X8_HAVE_HW_I2C
+#include <Wire.h>
+#endif
+
+
 
 #define LCD_SS 2            //LCD SS
 #define StartPin 3          //Start Butonu
@@ -83,12 +92,11 @@ boolean isWorking;
 // GLCD variables
 //gText  textTop = gText(textAreaTOP); // create a text area covering the top half of the display
 
-I2C_graphical_LCD_display lcd;
-
 
 void setup() {
   Serial.begin(115200);
   Serial.println("Start");
+
   pinMode(StartPin, INPUT_PULLUP);
   pinMode(StopPin, INPUT_PULLUP);
   pinMode(TimeUpPin, INPUT_PULLUP);
@@ -145,17 +153,21 @@ void setup() {
     GLCD.SelectFont(lcdnums12x16);  // LCD looking font
   */
 
+  Serial.println("2.adım");
 
-  lcd.begin ();
-  TWBR = 12;
-  lcd.gotoxy(0, 0);
-  lcd.string("www.brsservis.com");
+  u8g2.begin();
+  u8g2.clearBuffer();          // clear the internal memory
+
+  printValues2LCD();
+  Serial.println("3.adım");
+
 
   radio.begin();
   radio.openWritingPipe(addresses[1]); // 00001
   radio.openReadingPipe(1, addresses[0]); // 00002
   radio.setPALevel(RF24_PA_MIN);
   radio.maskIRQ(1, 1, 0); //Mask all interrupts except the receive interrupt tx ok, tx fail, rx ready
+  Serial.println("4.adım");
 
   attachInterrupt(0, radioInterrupt, FALLING);
 
@@ -201,10 +213,10 @@ ISR(TIMER1_COMPA_vect) {
     }
     printValues2LCD();
     /*
-    snprintf(buf, sizeof(buf), "%02d:%02d", minute, second);
-    // draw the formatted string on the display
-    lcd.gotoxy (0, 40);
-    lcd.string(buf);
+      snprintf(buf, sizeof(buf), "%02d:%02d", minute, second);
+      // draw the formatted string on the display
+      lcd.gotoxy (0, 40);
+      lcd.string(buf);
     */
   }
 }
@@ -229,7 +241,7 @@ void loop()
   heatUpReading = heatDownDebouncer.fell();
 
   processButtons();
-
+  printValues2LCD();
 }
 
 void radioInterrupt() {
@@ -277,25 +289,24 @@ void radioInterrupt() {
   // Gelenmesajları LCD üzerinde göster
   /*
 
-
     processMessage(message);
-
-
-
 
   */
 }
 
 
 void processButtons() {
-  if (timeUpReading == HIGH) {
-    LCDTimeInterval++;
-    minute = LCDTimeInterval;
-    second = 0;
-    TimeInterval = LCDTimeInterval * 60; //Saniyeye çevir
-    Serial.println("TimeInterval : " + TimeInterval);
+  //Serial.println("Buton basıldı");
+  if (!isWorking) {
+    if (digitalRead(TimeUpPin == LOW)) {
+        //if (timeUpReading == HIGH) {
+        LCDTimeInterval++;
+        minute = LCDTimeInterval;
+        second = 0;
+        TimeInterval = LCDTimeInterval * 60; //Saniyeye çevir
+        Serial.println("TimeInterval : " + TimeInterval);
   }
-  if (timeDownReading == HIGH) {
+if (timeDownReading == HIGH) {
     if (LCDTimeInterval > 0) {
       LCDTimeInterval--;
       minute = LCDTimeInterval;
@@ -354,39 +365,50 @@ void processButtons() {
     delay(5);
     radio.startListening();
   }
-  if (stopReading == HIGH) {
-    Serial.println("Stop Working...." );
+}
+if (stopReading == HIGH && isWorking) {
+  Serial.println("Stop Working...." );
 
-    isWorking = false;
-    radio.stopListening();
-    message = "CMD0";
-    //radio.write(&message, sizeof(message));
-    delay(5);
-    radio.startListening();
-    message = "TIM" + String(TimeInterval);
-    //radio.write(&message, sizeof(message));
-    radio.stopListening();
-    delay(5);
-    radio.startListening();
-    message = "DST" + String(Distance);
-    radio.stopListening();
-    //radio.write(&message, sizeof(message));
-    delay(5);
-    radio.startListening();
-    /*
-        message = "LMP0";
-        radio.write(&message, sizeof(message));
-        delay(5);
-    */
-  }
+  isWorking = false;
+  radio.stopListening();
+  message = "CMD0";
+  //radio.write(&message, sizeof(message));
+  delay(5);
+  radio.startListening();
+  message = "TIM" + String(TimeInterval);
+  //radio.write(&message, sizeof(message));
+  radio.stopListening();
+  delay(5);
+  radio.startListening();
+  message = "DST" + String(Distance);
+  radio.stopListening();
+  //radio.write(&message, sizeof(message));
+  delay(5);
+  radio.startListening();
+  /*
+      message = "LMP0";
+      radio.write(&message, sizeof(message));
+      delay(5);
+  */
 }
+}
+
 void printValues2LCD() {
-  lcd.begin();  //clear everything ??
-  lcd.gotoxy(40, 0);
   char buf[30];
-  snprintf(buf, sizeof(buf), "DIST:%02d TEMP:%02d TIME:%02d", LCDDistance, sicaklik, TimeInterval);
-  lcd.string(buf);
+
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_mozart_nbp_tr ); // choose a suitable font
+
+  snprintf(buf, sizeof(buf), "DIST:%02d ", LCDDistance);
+  u8g2.drawStr( 0, 10, buf);
+  snprintf(buf, sizeof(buf), "TEMP:%02d ", sicaklik);
+  u8g2.drawStr( 0, 20, buf);
+  snprintf(buf, sizeof(buf), "TIME:%02d",  LCDTimeInterval);
+  u8g2.drawStr( 0, 30, buf);
+  u8g2.drawStr( 0, 55, "www.brsservis.com");
+  u8g2.sendBuffer();
 }
+
 void processMessage(String input) {
   input.toUpperCase();
   char buf[10];

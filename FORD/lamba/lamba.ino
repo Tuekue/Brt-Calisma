@@ -45,6 +45,7 @@ boolean newData = false;
 
 int sicaklik;
 int say = 0;
+int bekleme = 0;
 
 boolean buttonState = 0;
 SoftwareSerial mySerial = SoftwareSerial (rxPin, txPin);
@@ -75,7 +76,7 @@ void setup() {
   pinMode (rxPin, INPUT);
   pinMode (txPin, OUTPUT);
   mySerial.begin(9600);
-  Serial.println("Hello ???");
+
   //default values
   isWorking = false;
   startTimer = false;
@@ -115,6 +116,13 @@ ISR(TIMER1_COMPA_vect) {
     }
     //süre bitti çalışma dursun
     //bu kısmı runProgram() fonksiyonu hallediyor
+
+    if (bekleme > 0 && millis() >= bekleme +  180000) // 3dk = 3 x 60 sn x 1000 ms
+    {
+      digitalWrite(RLiftUp, HIGH);
+      isWorking = false;
+      bekleme = 0;
+    }
   }
 }
 
@@ -139,17 +147,21 @@ void loop() {
 }
 
 int mesafeOku(int testValue) {
-  int mesafe = readDistance();
-  // 5 kere denemeden geçme
-  mesafe = readDistance();
-  if (mesafe < testValue) {
-    say++;
-  } else {
-    say = 0;
+  if (bekleme > 0 && millis() >= bekleme +  180000) // 3dk = 3 x 60 sn x 1000 ms
+  {
+    bekleme = 0;
+    mesafe=2000;
+  } else {  
+    int mesafe = readDistance();
+    // 5 kere denemeden geçme
+    mesafe = readDistance();
+    if (mesafe < testValue) {
+      say++;
+    } else {
+      say = 0;
+    }
   }
-  //Serial.print("Mesafe: ");
-  //Serial.println(mesafe);
-
+  Serial.print("Mesafe: "); Serial.println(mesafe);
   return mesafe;
 }
 
@@ -163,49 +175,10 @@ void commWithSerial() {
   char rc;
   String msg;
 
-
-
-
   if (mySerial.available() > 0)
   {
     message = mySerial.readString();
 
-    /*
-      // if (Serial.available() > 0) {
-      while (mySerial.available() > 0 && newData == false) {
-        rc = mySerial.read();
-
-        if (recvInProgress == true) {
-          if (rc != endMarker) {
-            receivedChars[ndx] = rc;
-            ndx++;
-            if (ndx >= 8) {
-              ndx = 7; //son karakteri kes yeni gelen son olsun
-      /*
-                newData = true; //beklenen değer değilmiş. rastgele < gelmiş olmalı baştan başla
-                ndx = 0;
-                recvInProgress = false;
-    */
-    /*       }
-         }
-         else {
-           receivedChars[ndx] = '\0'; // terminate the string
-           recvInProgress = false;
-           ndx = 0;
-           newData = true;
-         }
-       }
-
-       else if (rc == startMarker) {
-         recvInProgress = true;
-       }
-      }
-      message = receivedChars;
-
-      //Serial.println(message);
-      if (newData == true) {
-       newData = false;
-    */
     Serial.print("Msg = "); Serial.println(message);
     if (message.startsWith("<DST")) {
       msg = message.substring(4, 3);
@@ -250,6 +223,7 @@ void blinkLed() {
   digitalWrite(13, LOW);
   delay(50);
 }
+
 void runProgram() {
   char str[6];
   //Serial.print("startTimer"); Serial.println(startTimer);
@@ -299,6 +273,7 @@ void runProgram() {
       delay(1000);
       // Limit switch gelince duracak. Biz elleşmiyoz.
       startTimer = false;
+      bekleme = millis();
     }
   }
 }

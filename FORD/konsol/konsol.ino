@@ -40,7 +40,7 @@
 
 #define NumOfButtons 8
 
-U8G2_ST7920_128X64_F_SW_SPI u8g2(U8G2_R0, /* clock=*/ 13, /* data=*/ 11, /* CS=*/ 10, /* reset=*/ 8);
+U8G2_ST7920_128X64_1_SW_SPI u8g2(U8G2_R0, /* clock=*/ 13, /* data=*/ 11, /* CS=*/ 10, /* reset=*/ 8);
 
 uint8_t buttons[NumOfButtons] = {TimeUpPin, TimeDownPin, DistanceUpPin, DistanceDownPin, heatUpPin, heatDownPin, StartPin, StopPin};
 boolean butgate[NumOfButtons];
@@ -57,9 +57,11 @@ boolean newData = false;
 
 int minute;
 int second;
+int bekleme;
 
 boolean isWorking;
 SoftwareSerial mySerial = SoftwareSerial (rxPin, txPin);
+String LCDInfo;
 
 //////////// SETUP ////////// SETUP ////////// SETUP ////////// SETUP ////////// SETUP /////
 void setup() {
@@ -89,13 +91,14 @@ void setup() {
   LCDTimeInterval = 4; //Calisma suresi 4 dk default LCD de gösterim
   TimeInterval = LCDTimeInterval * 60; // Calisma suresi 240 sn default (4x60)
   sicaklik = 80; //80 derece
-Serial.println(sicaklik);
+
   minute = 4; //Calisma suresi 4 dk default
   second = 0;
+  bekleme = 0;
 
   u8g2.begin();
-  u8g2.clearBuffer();          // clear the internal memory
-
+  u8g2.setFontMode(0);
+  LCDInfo="";
   printValues2LCD();
 
   /* Saniyede 1 çalışacak kesme ayarlanıyor */
@@ -139,29 +142,13 @@ ISR(TIMER1_COMPA_vect) {
         second = 0;
       }
     }
-    lcdTimeDisplay();
-    /*
-       u8g2.clearBuffer();
-       u8g2.setFont(u8g2_font_mozart_nbp_tr );
-       u8g2.setCursor(0, 30);
-
-       u8g2.print("TIME: ");
-       if (minute < 10) {
-         u8g2.print(0);
-       }
-       u8g2.print(minute);
-       u8g2.print(":");
-       if (second < 10) {
-         u8g2.print(0);
-       }
-       u8g2.print(second);
-
-       u8g2.setCursor(0, 40);
-       u8g2.print("CALISIYOR");
-
-       u8g2.sendBuffer();
-       //printValues2LCD();
-    */
+    if (bekleme > 0 && millis() >= bekleme +  60000) // 1 dk = 60 sn x 1000 ms
+    {
+      digitalWrite(RLiftUp, HIGH);
+      isWorking = false;
+      bekleme = 0;
+    }
+    printValues2LCD();
   }
 }
 
@@ -195,67 +182,24 @@ void loop()
 // Bu fonksiyonun işlevlerini radio olmadan yapalım
 // Lamba ile mesajlaşma işleri
 void commWithSerial() {
-  char receivedChars[8];
-  static boolean recvInProgress = false;
-  static byte ndx = 0;
-
-  //For the sake of memory
-  char startMarker = '<';
-  char endMarker = '>';
-
-  char rc;
 
   String message;
   message = "";
-
 
   if (mySerial.available() > 0)
   {
     message = mySerial.readString();
     Serial.print("Gelen mesaj: "); Serial.println(message);
-    /*
-      // Gelen bilgi var ise
-      while (Serial.available() > 0 && newData == false) {
-       rc = Serial.read();
 
-       if (recvInProgress == true) {
-         if (rc != endMarker) {
-           receivedChars[ndx] = rc;
-           ndx++;
-           if (ndx >= 8) {
-             ndx = 7;
-           }
-         }
-         else {
-           receivedChars[ndx] = '\0'; // terminate the string
-           recvInProgress = false;
-           ndx = 0;
-           newData = true;
-         }
-       }
-
-       else if (rc == startMarker) {
-         recvInProgress = true;
-       }
-      }
-
-      message = receivedChars;
-
-      Serial.print("Gelen mesaj: "); Serial.println(message);
-      u8g2.clearBuffer();
-      u8g2.setFont(u8g2_font_mozart_nbp_tr );
-      u8g2.setCursor(0, 40);
-      u8g2.print(message);
-    */
     if (message == "<LMD1>") {
-      print2LCD("Lamba indiriliyor");
+      LCDInfo = "Lift indiriliyor";
       digitalWrite(RLiftUp, HIGH);
       delay(3000);
       // LMP mesajı 1 geldi. İndirme işemini başlat
       digitalWrite(RLiftDown, LOW);
     }
     if (message == "<LMD0>") {
-      print2LCD("Lamba durduruldu.");
+      LCDInfo = "Lift durduruldu.";
       digitalWrite(RLiftUp, HIGH);
       delay(3000);
       // LMP mesajı 0 geldi. İndirme işemini durdur.
@@ -263,31 +207,32 @@ void commWithSerial() {
       isWorking = true;
     }
     if (message == "<LMU1>") {
-      print2LCD("Lamba kaldırılıyor");
+      LCDInfo = "Lift kaldırılıyor";
       digitalWrite(RLiftDown, HIGH);
       delay(3000);
       // LMU mesajı 1 geldi. Kaldırma işlemine başla
       digitalWrite(RLiftUp, LOW);
+      bekleme = millis();
     }
     if (message == "<LMU0>") {
-      print2LCD("Lamba durduruldu.");
+      LCDInfo = "Lift durduruldu.";
       digitalWrite(RLiftDown, HIGH);
       delay(3000);
       // LMU mesajı 0 geldi. Kaldırma işlemini durdur
       digitalWrite(RLiftUp, HIGH);
       isWorking = false;
     }
+    Serial.println(LCDInfo);
+    printValues2LCD();
   }
 }
 
-void print2LCD(String msg) {
-  u8g2.setFont(u8g2_font_mozart_nbp_tr );
-  u8g2.setCursor(0, 40);
-  u8g2.print(msg);
-}
 
 void processButtons(int buton) {
-  //  Serial.print("Buton basıldı"); Serial.println(buton);
+  String message;
+
+  message = "";
+  Serial.print("Buton basıldı"); Serial.println(buton);
   if (!isWorking)
   {
     if (buttons[buton] == TimeUpPin)
@@ -297,7 +242,6 @@ void processButtons(int buton) {
       minute = LCDTimeInterval;
       second = 0;
       TimeInterval = LCDTimeInterval * 60; //Saniyeye çevir
-      lcdTimeDisplay();
       //Serial.print("TimeInterval : "); Serial.print(TimeInterval); Serial.print(" LCD Interval: "); Serial.println(LCDTimeInterval);
     }
     if  (buttons[buton] == TimeDownPin)
@@ -307,14 +251,12 @@ void processButtons(int buton) {
       minute = LCDTimeInterval;
       second = 0;
       TimeInterval = LCDTimeInterval * 60; //Saniyeye çevir
-      lcdTimeDisplay();
       //Serial.print("TimeInterval : "); Serial.print(TimeInterval); Serial.print(" LCD Interval: "); Serial.println(LCDTimeInterval);
     }
     if (buttons[buton]  == DistanceUpPin)
     {
       LCDDistance++;
       Distance = LCDDistance * 10; //mm çevir
-      lcdDistanceDisplay();
       //Serial.print("Distance : "); Serial.print(Distance); Serial.print(" LCD Distance : "); Serial.println(LCDDistance);
     }
     if (buttons[buton]  == DistanceDownPin)
@@ -323,22 +265,18 @@ void processButtons(int buton) {
         LCDDistance--;
       }
       Distance = LCDDistance * 10; //mm çevir
-      lcdDistanceDisplay();
       //Serial.print("Distance : "); Serial.print(Distance); Serial.print(" LCD Distance : "); Serial.println(LCDDistance);
     }
     if (buttons[buton]  == heatDownPin)
     {
       sicaklik --;
-      lcdSicaklikDisplay();
       Serial.print("Sıcaklık - : "); Serial.println(sicaklik);
     }
     if (buttons[buton]  == heatUpPin)
     {
       sicaklik ++;
-      lcdSicaklikDisplay();
       Serial.print("Sıcaklık + : "); Serial.println(sicaklik);
     }
-    String message;
     if (buttons[buton]  == StartPin)
     {
       //Serial.println("Start Working...." );
@@ -360,10 +298,11 @@ void processButtons(int buton) {
       delay(1000);
       // Lambaya mesaj yolla
       mySerial.print("<CMD1>");
+
+      LCDInfo = "ÇALIŞIYOR";
       delay(1000);
     }
   }
-  String message;
   if (isWorking)
   {
     if (buttons[buton]  == StopPin)
@@ -373,80 +312,45 @@ void processButtons(int buton) {
       delay(1000);
       minute = LCDTimeInterval;
       second = 0;
-      printValues2LCD();
-
       isWorking = false;
+      LCDInfo = "DURDU";
       // Lambaya mesaj yolla
-
     }
   }
-}
-void lcdTimeDisplay() {
-  //u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_mozart_nbp_tr ); // choose a suitable font
-  u8g2.setCursor(0, 30);
-Serial.print(minute);Serial.print(":");Serial.println(second);
-  u8g2.print("ZAMAN: ");
-  if (minute < 10) {
-    u8g2.print(0);
-  }
-  u8g2.print(minute);
-  u8g2.print(":");
-  if (second < 10) {
-    u8g2.print(0);
-  }
-  u8g2.print(second);
-  u8g2.setCursor(0, 55);
-  u8g2.print(F("www.brsservis.com"));
-
-  u8g2.sendBuffer();
-  u8g2.setFontMode(0);
+  printValues2LCD();
 }
 
-void lcdDistanceDisplay() {
-  //u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_mozart_nbp_tr ); // choose a suitable font
-
-  u8g2.setCursor(0, 10);
-  u8g2.print("MESAFE: ");
-  u8g2.print(LCDDistance);
-
-  u8g2.sendBuffer();
-  u8g2.setFontMode(0);
-}
-void lcdSicaklikDisplay() {
-  //u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_mozart_nbp_tr ); // choose a suitable font
-
-  u8g2.setCursor(0, 20);
-  u8g2.print("SICAKLIK: ");
-  u8g2.print(sicaklik);
-  Serial.print("sicaklik:"); Serial.println(sicaklik);
-
-  u8g2.sendBuffer();
-  u8g2.setFontMode(0);
-
-}
 void printValues2LCD() {
 
-  u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_mozart_nbp_tr ); // choose a suitable font
+  u8g2.setFont(u8g2_font_mozart_nbp_tr);
+  u8g2.firstPage();
+  do {
+    u8g2.setCursor(0, 10);
+    u8g2.print(F("MESAFE: "));
+    u8g2.print(LCDDistance);
 
-  lcdDistanceDisplay();
-  lcdSicaklikDisplay();
-  lcdTimeDisplay();
+    u8g2.setCursor(0, 20);
+    u8g2.print(F("SICAKLIK: "));
+    u8g2.print(sicaklik);
 
-  u8g2.setCursor(0, 55);
-  u8g2.print(F("www.brsservis.com"));
-  u8g2.sendBuffer();
-  u8g2.setFontMode(0);
-  u8g2.setFont(u8g2_font_cu12_hr);
+    u8g2.setCursor(0, 30);
+    u8g2.print(F("ZAMAN: "));
+    if (minute < 10) {
+      u8g2.print(F("0"));
+    }
+    u8g2.print(minute);
+    u8g2.print(F(":"));
 
-}
+    if (second < 10) {
+      u8g2.print(F("0"));
+    }
+    u8g2.print(second);
 
-void processMessage(String input) {
-  input.toUpperCase();
-  char buf[10];
+    u8g2.setCursor(0, 40);
+    u8g2.print(LCDInfo);
 
-  // Gelen mesajı işeyip LCD'de göster
+    u8g2.setCursor(0, 55);
+    u8g2.print(F("www.brsservis.com"));
+  } while ( u8g2.nextPage() );
+
 }

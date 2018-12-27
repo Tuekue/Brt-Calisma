@@ -16,6 +16,9 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <VL53L0X.h>
+#include <SoftwareSerial.h> // soft serial
+#define rxPin 4             // soft serial
+#define txPin 3             // soft serial
 
 VL53L0X sensor;
 #define RLamba A0         //Lamba rölesi
@@ -32,28 +35,30 @@ VL53L0X sensor;
 boolean Start; //0 Stop, 1 Start
 int LampPosition; //1 down, 0  up
 int Distance; //in mm
-int sifirPozisyonu;
 int TimeInterval; //Working time
 
 int timerSayac;
 boolean startTimer;
 boolean isWorking;
 String message;
+boolean newData = false;
 
 int sicaklik;
+int say = 0;
 
 boolean buttonState = 0;
+SoftwareSerial mySerial = SoftwareSerial (rxPin, txPin);
 
 //////////// SETUP ////////// SETUP ////////// SETUP ////////// SETUP ////////// SETUP /////
 void setup() {
   Serial.begin(9600);
 
-  // Mini de Serial1 kullanılıyormuş.
-  // Serial1.begin(9600);
-
   Serial.println("Start lamba");
   pinMode(RLamba, OUTPUT);
   pinMode(RFan, OUTPUT);
+  digitalWrite(RLamba, HIGH);
+  digitalWrite(RFan, HIGH);
+  pinMode(13, OUTPUT);
 
   Wire.begin();
   sensor.init();
@@ -65,15 +70,18 @@ void setup() {
   // increase laser pulse periods (defaults are 14 and 10 PCLKs)
   sensor.setVcselPulsePeriod(VL53L0X::VcselPeriodPreRange, 18);
   sensor.setVcselPulsePeriod(VL53L0X::VcselPeriodFinalRange, 14);
-  // ------------------------------
 
+  // ------------------------------
+  pinMode (rxPin, INPUT);
+  pinMode (txPin, OUTPUT);
+  mySerial.begin(9600);
+  Serial.println("Hello ???");
   //default values
   isWorking = false;
   startTimer = false;
   Start = 0; //0 Stop, 1 Start
   LampPosition = 0; //1 down, 0 up
   Distance = 600; //in mm
-  sifirPozisyonu = 400; // in mm
   TimeInterval = 240; //Working time 4min default
   timerSayac = TimeInterval;
 
@@ -96,7 +104,6 @@ void setup() {
   sei();
   /* Timer1 kesmesinin çalışabilmesi için tüm kesmeler aktif hale getirildi */
   Serial.println("Setup End");
-  Serial.flush();
 }
 
 /* Arduino otomatik olarak her saniye aşağıdaki fonksiyonu çalıştıracaktır */
@@ -119,7 +126,8 @@ void loop() {
 
   // Çalışmıyorsan altta kupa var mıkontrol et. Mesafe 2000 mm (2 m) altında ise aşağıda bir şey var
   // sistem çalışmaya başlasın. (deneme yanılma ile düzeltilecek)
-  if (!isWorking && readDistance() <= 2000) {
+
+  if (!isWorking && mesafeOku(2000) < 2000 && say < 5) {
     isWorking = true;
     //Serial.println("Kupa geldi... Çalış");
   }
@@ -128,46 +136,120 @@ void loop() {
   if (isWorking) {
     runProgram();
   }
+}
 
+int mesafeOku(int testValue) {
+  int mesafe = readDistance();
+  // 5 kere denemeden geçme
+  mesafe = readDistance();
+  if (mesafe < testValue) {
+    say++;
+  } else {
+    say = 0;
+  }
+  //Serial.print("Mesafe: ");
+  //Serial.println(mesafe);
 
+  return mesafe;
 }
 
 void commWithSerial() {
-  int i;
-  char str[6];
+
+  char receivedChars[9];
+  static boolean recvInProgress = false;
+  static byte ndx = 0;
+  char startMarker = '<';
+  char endMarker = '>';
+  char rc;
   String msg;
-  // Gelen bilgi var ise
-  if (Serial.available())
+
+
+
+
+  if (mySerial.available() > 0)
   {
-    i = 0;
-    // mesajı oku
-    delay(100); //allows all serial sent to be received together
-    while (Serial.available() && i < 6) {
-      //Mini de Serial1 kullanılıyormuş
-      //str[i++] = Serial1.read();
-      str[i++] = Serial.read();
+    message = mySerial.readString();
+
+    /*
+      // if (Serial.available() > 0) {
+      while (mySerial.available() > 0 && newData == false) {
+        rc = mySerial.read();
+
+        if (recvInProgress == true) {
+          if (rc != endMarker) {
+            receivedChars[ndx] = rc;
+            ndx++;
+            if (ndx >= 8) {
+              ndx = 7; //son karakteri kes yeni gelen son olsun
+      /*
+                newData = true; //beklenen değer değilmiş. rastgele < gelmiş olmalı baştan başla
+                ndx = 0;
+                recvInProgress = false;
+    */
+    /*       }
+         }
+         else {
+           receivedChars[ndx] = '\0'; // terminate the string
+           recvInProgress = false;
+           ndx = 0;
+           newData = true;
+         }
+       }
+
+       else if (rc == startMarker) {
+         recvInProgress = true;
+       }
+      }
+      message = receivedChars;
+
+      //Serial.println(message);
+      if (newData == true) {
+       newData = false;
+    */
+    Serial.print("Msg = "); Serial.println(message);
+    if (message.startsWith("<DST")) {
+      msg = message.substring(4, 3);
+      Distance = msg.toInt();
     }
-    str[i++] = '\0';
-  }
-  if (i > 0) {
-    message = str;
-    //Serial.println(message);
-  }
-  if (message.startsWith("DST")) {
-    msg = message.substring(4, 3);
-    Distance = msg.toInt();
-  }
-
-  if (message.startsWith("HEA")) {
-
-    msg = message.substring(4, 3);
-    sicaklik = msg.toInt();
-  }
-  if (message.startsWith("CMD1")) {
-    isWorking = true;
+    if (message.startsWith("<HEA")) {
+      msg = message.substring(4, 3);
+      sicaklik = msg.toInt();
+    }
+    if (message.startsWith("<TIM")) {
+      msg = message.substring(4, 3);
+      TimeInterval = msg.toInt();
+    }
+    if (message == "<CMD1>") {
+      isWorking = true;
+    }
+    if (message == "<CMD0>") {
+      isWorking = false;
+    }
+    blinkLed();
   }
 }
-
+void blinkLed() {
+  digitalWrite(13, HIGH);
+  delay(50);
+  digitalWrite(13, LOW);
+  delay(50);
+  digitalWrite(13, HIGH);
+  delay(50);
+  digitalWrite(13, LOW);
+  delay(50);
+  digitalWrite(13, HIGH);
+  delay(50);
+  digitalWrite(13, LOW);
+  delay(50);
+  digitalWrite(13, HIGH);
+  delay(50);
+  digitalWrite(13, LOW);
+  delay(50);
+  digitalWrite(13, HIGH);
+  delay(50);
+  digitalWrite(13, LOW);
+  delay(50);
+}
 void runProgram() {
   char str[6];
   //Serial.print("startTimer"); Serial.println(startTimer);
@@ -176,32 +258,31 @@ void runProgram() {
     // 1.adım İndirme işemini başlat
     //Serial.println("1.adım İndirme işemini başlat");
     // Lamba aşşağı mesajını konsola yolla ki motoru çalıştırsın
-
-
-    //Mini de Serial1 kullanılıyormuş
-    //Serial1.write("LMD1");
-    Serial.write("LMD1");
-    delay(50);
-
+    mySerial.print ("<LMD1>");
+    Serial.println("<LMD1>");
+    delay(1000);
+    blinkLed();
     // Okunan Mesafe Distance'dan küçük olduğu sürece bekle. Default 600mm
-    while (readDistance() < Distance) {
-      //Serial.print("Distance: "); Serial.print(readDistance()); Serial.print("  test value : "); Serial.println(Distance);
-      ;
+    //Serial.print("Distance: "); Serial.print(readDistance()); Serial.print("  test value : "); Serial.println(Distance);
+    int mesafe = readDistance();
+    int say = 0; // 5 kere denemeden geçme
+
+    while (mesafe > Distance && say < 5) {
+      mesafe = mesafeOku(Distance);
     }
 
     // Lamba aşşağı bitti mesajını konsola yolla ki motoru durdursun
-    //Mini de Serial1 kullanılıyormuş
-    //Serial1.write("LMD0");
-    Serial.write("LMD0");
-    delay(50);
+    mySerial.print ("<LMD0>");
+    Serial.println("<LMD0>");
+    delay(1000);
 
     // 2.adım Lambayı Yak
     //Serial.println("2.adım Lambayı Yak ");
-    digitalWrite(RLamba, HIGH);
-    digitalWrite(RFan, HIGH);
+    digitalWrite(RLamba, LOW);
+    digitalWrite(RFan, LOW);
     // 3.adım Süreyi başlat
     timerSayac = TimeInterval;
-    //Serial.println("3.adım Süreyi başlat ");
+    Serial.println("3.adım Süreyi başlat ");
     startTimer = true;
   }
 
@@ -210,47 +291,39 @@ void runProgram() {
 
     if (timerSayac == 0) {
       // 4.adım Süre bitti ise Lambayı kapat, Yukarı kaldır
-      digitalWrite(RLamba, LOW);
+      digitalWrite(RLamba, HIGH);
+      digitalWrite(RFan, HIGH);
       //Lamba yukarı mesajını yolla ki motor çalıştırsın
-      //Mini de Serial1 kullanılıyormuş
-      //  Serial1.write("LMU1");
-      Serial.write("LMU1");
-
-      while (readDistance() > sifirPozisyonu);
-      // sifirPozisyonu na gelene kadar kaldır.
-      //Lamba yukarı bitti mesajını yolla ki motoru durdursun
-      //Mini de Serial1 kullanılıyormuş
-      //  Serial1.write("LMU0");
-      Serial.write("LMU0");
-
+      mySerial.print ("<LMU1>");
+      Serial.println("<LMU1>");
+      delay(1000);
+      // Limit switch gelince duracak. Biz elleşmiyoz.
+      startTimer = false;
     }
   }
 }
 
 void processMessage(String input) {
   input.toUpperCase();
-
+  Serial.print("Gelen mesaj: "); Serial.println(input);
   if (!isWorking) {//Lamba meşgul değilse
-    if (input.startsWith("CMD"))
+    if (input == "<CMD1>")
     {
-      //Serial.println("CMD gelmiş");
-      if (input.substring(4, 1) == "1") {
-        // Start komutu geldi.
-        isWorking = true;
-      }
+      // Start komutu geldi.
+      isWorking = true;
     }
-    if (input.startsWith("LMP"))
+    if (input.startsWith("<LMP"))
     {
       //Serial.println("LMP gelmiş");
       // Lamba indir kaldır komutla olmaz
     }
-    if (input.startsWith("DST"))
+    if (input.startsWith("<DST"))
     {
-      //Serial.println("DST Gelömiş");
+      //Serial.println("DST Gelmiş");
       String Tmp = input.substring(4, 3);
       Distance = Tmp.toInt();
     }
-    if (input.startsWith("TIM")) {
+    if (input.startsWith("<TIM")) {
       //Serial.println("TIM Gelmiş");
       String Tmp = input.substring(4, 3);
       TimeInterval = Tmp.toInt();
@@ -273,6 +346,6 @@ int readDistance() {
   if (okunanMesafe < 40) {
     okunanMesafe = 40;
   }
-  //  Serial.print("Mesafe : "); Serial.println(okunanMesafe);
+  //Serial.print("Mesafe : "); Serial.println(okunanMesafe);
   return okunanMesafe;
 }

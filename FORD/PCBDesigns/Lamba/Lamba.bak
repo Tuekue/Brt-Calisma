@@ -30,8 +30,6 @@ Text Label 10500 1800 0    60   ~ 0
 Reset
 Text Label 9000 2000 0    60   ~ 0
 2
-Text Label 9000 2100 0    60   ~ 0
-3(**)
 Text Label 9000 2200 0    60   ~ 0
 4
 Text Label 9000 2300 0    60   ~ 0
@@ -169,10 +167,6 @@ Wire Wire Line
 Wire Wire Line
 	9250 1900 9250 2800
 Wire Wire Line
-	9350 1600 9000 1600
-Wire Wire Line
-	9000 1700 9350 1700
-Wire Wire Line
 	9350 1800 9000 1800
 Wire Wire Line
 	9000 2000 9350 2000
@@ -220,10 +214,6 @@ Wire Wire Line
 	10500 2000 10250 2000
 Wire Wire Line
 	10250 2100 10500 2100
-Wire Wire Line
-	10500 2200 10250 2200
-Wire Wire Line
-	10250 2300 10500 2300
 Wire Notes Line
 	11200 3400 8500 3400
 Wire Notes Line
@@ -398,77 +388,13 @@ Wire Wire Line
 Wire Wire Line
 	2000 5050 3350 5050
 Wire Wire Line
-	9350 2100 1800 2100
-Wire Wire Line
-	1800 2100 1800 2950
-Wire Wire Line
-	9350 2200 3150 2200
-Wire Wire Line
-	3150 2200 3150 2950
-$Comp
-L RF:NRF24L01_Breakout U1
-U 1 1 5C178728
-P 9450 4650
-F 0 "U1" V 9972 4581 50  0000 C CNN
-F 1 "NRF24L01_Breakout" V 10063 4581 50  0000 C CNN
-F 2 "RF_Module:nRF24L01_Breakout" H 9600 5250 50  0001 L CIN
-F 3 "http://www.nordicsemi.com/eng/content/download/2730/34105/file/nRF24L01_Product_Specification_v2_0.pdf" H 9450 4550 50  0001 C CNN
-	1    9450 4650
-	0    1    1    0   
-$EndComp
-$Comp
-L power:VCC #PWR0102
-U 1 1 5C17B880
-P 6100 2950
-F 0 "#PWR0102" H 6100 2800 50  0001 C CNN
-F 1 "VCC" H 6117 3123 50  0000 C CNN
-F 2 "" H 6100 2950 50  0001 C CNN
-F 3 "" H 6100 2950 50  0001 C CNN
-	1    6100 2950
-	1    0    0    -1  
-$EndComp
-Wire Wire Line
-	10650 4650 10050 4650
-Wire Wire Line
-	9750 4150 9750 3900
-Wire Wire Line
-	9750 3900 11000 3900
-Wire Wire Line
-	11000 3900 11000 2600
-Wire Wire Line
 	10250 2600 11000 2600
-Wire Wire Line
-	9650 3800 10900 3800
-Wire Wire Line
-	10900 3800 10900 2500
 Wire Wire Line
 	10250 2500 10900 2500
 Wire Wire Line
-	9650 3800 9650 4150
-Wire Wire Line
-	9550 3700 10800 3700
-Wire Wire Line
-	10800 3700 10800 2400
-Wire Wire Line
 	10250 2400 10800 2400
 Wire Wire Line
-	9550 3700 9550 4150
-Wire Wire Line
-	9450 4150 9450 3600
-Wire Wire Line
-	9450 3600 10700 3600
-Wire Wire Line
-	10700 3600 10700 2700
-Wire Wire Line
 	10250 2700 10700 2700
-Wire Wire Line
-	9250 4150 9250 3600
-Wire Wire Line
-	9250 3600 8900 3600
-Wire Wire Line
-	8900 3600 8900 2700
-Wire Wire Line
-	8900 2700 9350 2700
 $Comp
 L MCU_Module:CJMCU-VL53L0X U2
 U 1 1 5C1356E8
@@ -504,10 +430,6 @@ Wire Wire Line
 	8400 3300 9550 3300
 Wire Wire Line
 	9550 3300 9550 3200
-Wire Wire Line
-	6800 3750 6100 3750
-Wire Wire Line
-	6100 3750 6100 2950
 $Comp
 L power:GND #PWR0103
 U 1 1 5C140049
@@ -520,8 +442,6 @@ F 3 "" H 7350 5700 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 Wire Wire Line
-	8700 4650 8700 5700
-Wire Wire Line
 	6800 3850 6300 3850
 Wire Wire Line
 	6300 3850 6300 4250
@@ -529,33 +449,66 @@ Wire Wire Line
 	6300 5300 7350 5300
 Wire Wire Line
 	7350 5300 7350 5700
-Connection ~ 7350 5700
 Wire Wire Line
 	6800 4250 6300 4250
 Connection ~ 6300 4250
 Wire Wire Line
 	6300 4250 6300 5300
-$Comp
-L power:VCC #PWR0104
-U 1 1 5C14ABD4
-P 10650 4550
-F 0 "#PWR0104" H 10650 4400 50  0001 C CNN
-F 1 "VCC" H 10667 4723 50  0000 C CNN
-F 2 "" H 10650 4550 50  0001 C CNN
-F 3 "" H 10650 4550 50  0001 C CNN
-	1    10650 4550
-	1    0    0    -1  
-$EndComp
 Wire Wire Line
 	600  5500 600  5300
 Wire Wire Line
 	1600 4500 1450 4500
 Wire Wire Line
 	2950 4500 2800 4500
+$Comp
+L power:+5V #PWR0102
+U 1 1 5C17215F
+P 6250 3200
+F 0 "#PWR0102" H 6250 3050 50  0001 C CNN
+F 1 "+5V" H 6265 3373 50  0000 C CNN
+F 2 "" H 6250 3200 50  0001 C CNN
+F 3 "" H 6250 3200 50  0001 C CNN
+	1    6250 3200
+	1    0    0    -1  
+$EndComp
 Wire Wire Line
-	8700 5700 7350 5700
+	6250 3200 6250 3750
 Wire Wire Line
-	8850 4650 8700 4650
+	6250 3750 6800 3750
 Wire Wire Line
-	10650 4650 10650 4550
+	9350 2700 9000 2700
+Wire Wire Line
+	9350 2300 9000 2300
+Wire Wire Line
+	9350 2400 9000 2400
+Wire Wire Line
+	8000 1600 8000 1400
+Wire Wire Line
+	8000 1600 9350 1600
+Wire Wire Line
+	7900 1700 7900 1400
+Wire Wire Line
+	7900 1700 9350 1700
+Text Label 7700 1350 0    60   ~ 0
+1(Tx)
+Text Label 8000 1350 0    60   ~ 0
+0(Rx)
+Text Label 7650 1200 0    60   ~ 0
+Diger_Arduino
+Wire Wire Line
+	1800 2900 1800 600 
+Wire Wire Line
+	1800 600  11000 600 
+Wire Wire Line
+	11000 600  11000 2300
+Wire Wire Line
+	10250 2300 11000 2300
+Wire Wire Line
+	10900 2200 10900 650 
+Wire Wire Line
+	10900 650  3150 650 
+Wire Wire Line
+	10250 2200 10900 2200
+Wire Wire Line
+	3150 650  3150 2950
 $EndSCHEMATC

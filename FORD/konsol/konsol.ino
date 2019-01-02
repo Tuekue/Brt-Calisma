@@ -279,7 +279,7 @@ void processButtons(int buton) {
     }
     if (buttons[buton]  == StartPin)
     {
-      //Serial.println("Start Working...." );
+      Serial.println("Start basildi...." );
       isWorking = true;
       minute = LCDTimeInterval;
       second = 0;
@@ -307,7 +307,7 @@ void processButtons(int buton) {
   {
     if (buttons[buton]  == StopPin)
     {
-      //Serial.println("Stop Working...." );
+      //Serial.println("Stop basildi...." );
       mySerial.print("<CMD0>");
       delay(1000);
       minute = LCDTimeInterval;

@@ -67,7 +67,7 @@ boolean isLiftDown;
 
 int minute;
 int second;
-int bekleme;
+unsigned long bekleme = 0;
 
 boolean isLampReady = false;
 boolean isWorking;
@@ -90,7 +90,8 @@ void setup() {
 
   pinMode(LiftUpRelay, OUTPUT);
   digitalWrite(LiftUpRelay, LOW); //Limit swiche kadar kalksın
-  bekleme = millis();// 1 dk sonra kapanacak
+  bekleme = 2000;// 1 dk sonra kapanacak
+
   pinMode(LiftDownRelay, OUTPUT);
   digitalWrite(LiftDownRelay, HIGH);
 
@@ -111,7 +112,6 @@ void setup() {
 
   minute = 4; //Calisma suresi 4 dk default
   second = 0;
-  bekleme = 0;
 
   isLiftUp = true;
   isLiftDown = false;
@@ -165,15 +165,19 @@ ISR(TIMER1_COMPA_vect) {
         second = 0;
       }
     }
-    // 1 dk bekle. Bu arada limit sw çalışmış olur. Sonra Lift Up rölesini bırak
-    if (!isWorking && bekleme > 0 && millis() >= bekleme +  60000) // 1 dk = 60 sn x 1000 ms
-    {
-      digitalWrite(LiftUpRelay, HIGH);
-      isWorking = false;
-      bekleme = 0;
-    }
-    // printValues2LCD();
+  }  // 1 dk bekle. Bu arada limit sw çalışmış olur. Sonra Lift Up rölesini bırak
+  Serial.print("isWorking: "); Serial.print(isWorking);
+  Serial.print("millis: "); Serial.print(millis());
+  Serial.print("bekleme: "); Serial.println(bekleme);
+
+  if (bekleme > 0 && millis() >= bekleme +  60000) // 1 dk = 60 sn x 1000 ms
+  {
+    digitalWrite(LiftUpRelay, HIGH);
+    isWorking = false;
+    bekleme = 0;
   }
+  // printValues2LCD();
+
 }
 
 ////////////////// LOOP ////////// LOOP ////////// LOOP ////////// LOOP ////////// LOOP /////
@@ -202,7 +206,7 @@ void commWithSerial() {
   if (mySerial.available() > 0) {
     message = mySerial.readString();
     msgLength = message.length();
-    Serial.print("Gelen mesaj: ");  Serial.print(message);Serial.print("  mesaj boyu : ");Serial.println(msgLength);
+    Serial.print("Gelen mesaj: ");  Serial.print(message); Serial.print("  mesaj boyu : "); Serial.println(msgLength);
     if (message.startsWith("<LMD1>")) {
       LCDInfo = "Lift indiriliyor";
       isWorking = true;

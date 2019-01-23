@@ -37,8 +37,8 @@ NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
 #define rxPin 4           // RX soft serial
 #define txPin 3           // TX soft serial
 //A4 (SDA), A5 (SCL)
-#define RLamba1 12        //Lamba rölesi
-#define RLamba2 13        //Fan rölesi
+#define LampRelay 12        //Lamba rölesi
+#define FanRelay 13        //Fan rölesi
 
 //#define CE 9
 //#define CSN 10
@@ -60,7 +60,7 @@ String message;
 boolean newData = false;
 
 int sicaklik;
-int bekleme = 0;
+unsigned long bekleme = 0;
 boolean isConsoleReady = false;
 
 boolean buttonState = 0;
@@ -71,10 +71,10 @@ void setup() {
   Serial.begin(115200);
 
   Serial.println("Lamba: Start setup");
-  pinMode(RLamba1, OUTPUT);
-  pinMode(RLamba2, OUTPUT);
-  digitalWrite(RLamba1, HIGH);
-  digitalWrite(RLamba2, HIGH);
+  pinMode(LampRelay, OUTPUT);
+  pinMode(FanRelay, OUTPUT);
+  digitalWrite(LampRelay, HIGH);
+  digitalWrite(FanRelay, HIGH);
 
   mlx.begin();  //Isı sensoru gy-906
 
@@ -128,15 +128,18 @@ ISR(TIMER1_COMPA_vect) {
     } else {
       startTimer = false;
     }
+  }
+  //  Serial.print("isWorking: "); Serial.print(isWorking);
+  //  Serial.print("millis: "); Serial.print(millis());
+  //  Serial.print("bekleme++: "); Serial.println(bekleme + 18000);
+  //  Serial.print("bekleme: "); Serial.println(bekleme);
 
-    // 3 dk bekle. Bu süre içerisinde aşağıdaki kupanın gitmesi gerekiyor.
-    // Yoksa yeni kupa sanıp tekrar başlıyor.
-    if (millis() >= bekleme +  180000) // 3  x 60 sn x 1000 ms
-    {
-      bekleme = 0;      
-      startTimer = false;
-      isWorking = false;
-    }
+  // 3 dk bekle. Bu süre içerisinde aşağıdaki kupanın gitmesi gerekiyor.
+  // Yoksa yeni kupa sanıp tekrar başlıyor.
+  if (bekleme > 0 && millis() >= bekleme + 180000) // 3  x 60 sn x 1000 ms
+  {
+    bekleme = 0;
+    isWorking = false;
   }
 }
 
@@ -266,8 +269,8 @@ void stopAndReset() {
   isWorking = false;
   startTimer = false;
   timerSayac = TimeInterval;
-  digitalWrite(RLamba1, HIGH);
-  digitalWrite(RLamba2, HIGH);
+  digitalWrite(LampRelay, HIGH);
+  digitalWrite(FanRelay, HIGH);
 
   // Limit switch gelince duracak. Biz elleşmiyoz.
 
@@ -275,8 +278,8 @@ void stopAndReset() {
 
 void runProgram() {
   //Serial.print("startTimer"); Serial.println(startTimer);
-  if (!startTimer) {
- 
+  if (!startTimer && bekleme == 0) {
+
     // 1.adım İndirme işemini başlat
     //Serial.println("1.adım İndirme işemini başlat");
     // Lamba aşağı mesajını konsola yolla ki motoru çalıştırsın
@@ -294,8 +297,8 @@ void runProgram() {
 
     // 2.adım Lambayı Yak
     Serial.println("2.adım Lambayı Yak ");
-    digitalWrite(RLamba1, LOW);
-    digitalWrite(RLamba2, LOW);
+    digitalWrite(LampRelay, LOW);
+    digitalWrite(FanRelay, LOW);
     // 3.adım Süreyi başlat
     timerSayac = TimeInterval;
     Serial.println("3.adım Süreyi başlat ");
@@ -303,18 +306,21 @@ void runProgram() {
   }
   String mesaj;
   if (startTimer && bekleme == 0) {
-    //Serial.print("Timersayac:"); Serial.println(timerSayac);
+    /*
+      Serial.print("Timersayac:"); Serial.print(timerSayac);
+      Serial.print(" bekleme:"); Serial.print(bekleme);
+      Serial.print( "startTimer:"); Serial.println(startTimer);
+    */
     if (timerSayac == 0) {
       // 4.adım Süre bitti ise Lambayı kapat, Yukarı kaldır
+      stopAndReset() ;
 
-      digitalWrite(RLamba1, HIGH);
-      digitalWrite(RLamba2, HIGH);
       //Lamba yukarı mesajını yolla ki motor çalıştırsın
       Serial.println("Lift Motor yukarı");
       mySerial.print("<LMU1>");
       delay(500);
       // Limit switch gelince duracak. Biz elleşmiyoz.
-      startTimer = false;
+
       bekleme = millis();
     }
   }

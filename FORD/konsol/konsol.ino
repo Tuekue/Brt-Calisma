@@ -8,7 +8,20 @@
   'LMD 0 stop rising lamp
   'DST XXX' Durma mesafesi oku/ayarla XXX (0-999 mm)
   'TIM XXX' Lamba çalışma süresi oku/ayarla (saniye)
-  'HEA XXX' Ölçülen Sıcaklık
+  'HEA XXX' Ayarlanan Sıcaklık
+  'ISI XXX' Ölçülen Sıcaklık
+  'LRD1 Lamba ready
+  'CRD1 Konsol ready
+*/
+/*
+  #define StartButton 2          //Start Butonu
+  #define StopButton 3          //Stop Butonu
+  #define TimeUpButton 4         //Zaman Artırma Butonu
+  #define TimeDownButton 5       //Zaman Azaltma Butonu
+  #define DistanceUpButton 6     //Mesafe Artırma Butonu
+  #define DistanceDownButton 7   //Mesafe Azaltma Butonu
+  #define heatUpButton A2        //Sıcaklık Artırma Butonu
+  #define heatDownButton A3      //Sıcaklık Azaltma Butonu
 */
 
 #include "Arduino.h"
@@ -16,91 +29,100 @@
 #include <U8g2lib.h>
 #include <SoftwareSerial.h> // soft serial
 
-/*
-  void setup();
-  void loop();
-  void commWithSerial();
-  void processButtons(int buton);
-  void lcdTimeDisplay();
-  void processMessage(String input);
-*/
-#define rxPin 9 // soft serial
-#define txPin 12 // soft serial
+#include <Bounce2.h>
 
-#define StartPin 2          //Start Butonu
-#define StopPin 3          //Stop Butonu
-#define TimeUpPin 4         //Zaman Artırma Butonu
-#define TimeDownPin 5       //Zaman Azaltma Butonu
-#define DistanceUpPin 6     //Mesafe Artırma Butonu
-#define DistanceDownPin 7   //Mesafe Azaltma Butonu
-#define RLiftDown A0        //Alçaltma rölesi
-#define RLiftUp A1          //Yükseltme rölesi
-#define heatUpPin A2        //Sıcaklık Artırma Butonu
-#define heatDownPin A3      //Sıcaklık Azaltma Butonu
+#define rxButton A2 // soft serial
+#define txButton A3 // soft serial
+#define LiftUpButton 12        //Sıcaklık Artırma Butonu
+#define LiftDownButton 9      //Sıcaklık Azaltma Butonu
+#define StartButton 2
+#define StopButton 3
+#define TimeUpButton 4
+#define TimeDownButton 5
+#define DistanceUpButton 6
+#define DistanceDownButton 7
+#define LiftDownRelay A0        //Alçaltma rölesi
+#define LiftUpRelay A1          //Yükseltme rölesi
 
 #define NumOfButtons 8
 
 U8G2_ST7920_128X64_1_SW_SPI u8g2(U8G2_R0, /* clock=*/ 13, /* data=*/ 11, /* CS=*/ 10, /* reset=*/ 8);
 
-uint8_t buttons[NumOfButtons] = {TimeUpPin, TimeDownPin, DistanceUpPin, DistanceDownPin, heatUpPin, heatDownPin, StartPin, StopPin};
-boolean butgate[NumOfButtons];
+//const uint8_t BUTTON_PINS[NumOfButtons] = {4, 5, 6, 7, 2, 3};
+const uint8_t BUTTON_PINS[NumOfButtons] = {TimeUpButton, TimeDownButton, DistanceUpButton, DistanceDownButton, StartButton, StopButton, LiftUpButton, LiftDownButton};
+
+Bounce * buttons = new Bounce[NumOfButtons];
 
 boolean Start;          //0 Stop, 1 Start
-uint8_t LampPosition;   //1 down, 0  up
-uint8_t Distance;       // mm cinsinden
-uint8_t LCDDistance;    // cm cinsinden
-uint8_t sifirPozisyonu;
-uint8_t TimeInterval;   //Working time saniye
-uint8_t LCDTimeInterval;//Working time dakika
-int sicaklik;
+int Distance;       // mm cinsinden
+int LCDDistance;    // cm cinsinden
+int sifirPozisyonu;
+int TimeInterval;   //Working time saniye
+int  LCDTimeInterval;//Working time dakika
+//int sicaklik;
+int isi;
 boolean newData = false;
+boolean isLiftUp;
+boolean isLiftDown;
 
 int minute;
 int second;
 int bekleme;
 
+boolean isLampReady = false;
 boolean isWorking;
-SoftwareSerial mySerial = SoftwareSerial (rxPin, txPin);
+SoftwareSerial mySerial = SoftwareSerial (rxButton, txButton);
 String LCDInfo;
 
 //////////// SETUP ////////// SETUP ////////// SETUP ////////// SETUP ////////// SETUP /////
 void setup() {
-  Serial.begin(9600);
-  Serial.println("Start konsol");
+  Serial.begin(115200);
+  Serial.println("Konsol: Start setup");
 
   for (int i = 0; i < NumOfButtons; i++) {
-    pinMode(buttons[i], INPUT_PULLUP);
-    butgate[i] = false;
+    //setup the bounce instance for the current buttons
+    buttons[i].attach( BUTTON_PINS[i] , INPUT_PULLUP  );
+    buttons[i].interval(5);              // interval in ms
   }
-  pinMode(RLiftUp, OUTPUT);
-  digitalWrite(RLiftUp, HIGH);
-  pinMode(RLiftDown, OUTPUT);
-  digitalWrite(RLiftDown, HIGH);
 
-  pinMode (rxPin, INPUT);
-  pinMode (txPin, OUTPUT);
+  pinMode(LiftUpButton, INPUT_PULLUP);
+  pinMode(LiftDownButton, INPUT_PULLUP);
+
+  pinMode(LiftUpRelay, OUTPUT);
+  digitalWrite(LiftUpRelay, LOW); //Limit swiche kadar kalksın
+  bekleme = millis();// 1 dk sonra kapanacak
+  pinMode(LiftDownRelay, OUTPUT);
+  digitalWrite(LiftDownRelay, HIGH);
+
+  pinMode (rxButton, INPUT);
+  pinMode (txButton, OUTPUT);
   mySerial.begin(9600);
 
-  //default values
+  /////////////////////////////////////////   default values ////////////////////////////////
   isWorking = false;
   Start = 0; //0 Stop, 1 Start
-  LampPosition = 0; //1 asagi, 0 yukari
   Distance = 600; // mm
   LCDDistance = 60; // cm LCD de gösterim
   sifirPozisyonu = 400; // mm
   LCDTimeInterval = 4; //Calisma suresi 4 dk default LCD de gösterim
   TimeInterval = LCDTimeInterval * 60; // Calisma suresi 240 sn default (4x60)
-  sicaklik = 80; //80 derece
+  //sicaklik = 80; //80 derece
+  isi = 0;
 
   minute = 4; //Calisma suresi 4 dk default
   second = 0;
   bekleme = 0;
 
+  isLiftUp = true;
+  isLiftDown = false;
+  /////////////////////////////////////////   default values ////////////////////////////////
+
   u8g2.begin();
   u8g2.setFontMode(0);
-  LCDInfo="";
+  LCDInfo = "Sistem Kontrol";
   printValues2LCD();
 
+  // delay(1000);
   /* Saniyede 1 çalışacak kesme ayarlanıyor */
   cli();
   /* Ayarlamaların yapılabilmesi için öncelikle kesmeler durduruldu */
@@ -118,6 +140,7 @@ void setup() {
 
   sei();
   /* Timer1 kesmesinin çalışabilmesi için tüm kesmeler aktif hale getirildi */
+
   Serial.println("Setup End");
 }
 
@@ -142,181 +165,227 @@ ISR(TIMER1_COMPA_vect) {
         second = 0;
       }
     }
-    if (bekleme > 0 && millis() >= bekleme +  60000) // 1 dk = 60 sn x 1000 ms
+    // 1 dk bekle. Bu arada limit sw çalışmış olur. Sonra Lift Up rölesini bırak
+    if (!isWorking && bekleme > 0 && millis() >= bekleme +  60000) // 1 dk = 60 sn x 1000 ms
     {
-      digitalWrite(RLiftUp, HIGH);
+      digitalWrite(LiftUpRelay, HIGH);
       isWorking = false;
       bekleme = 0;
     }
-    printValues2LCD();
+    // printValues2LCD();
   }
 }
 
 ////////////////// LOOP ////////// LOOP ////////// LOOP ////////// LOOP ////////// LOOP /////
 void loop()
 {
-  for (int i = 0; i < NumOfButtons; i++)
-  {
-    if (!butgate[i])
-    {
-      if (digitalRead(buttons[i]) == LOW)
-      {
-        butgate[i] = true;
-        processButtons(i);
-
-      }
-    }
-    if (butgate[i])
-    {
-      if (digitalRead(buttons[i]) == HIGH)
-      {
-        butgate[i] = false;
-      }
-    }
+  if (!isLampReady) {
+    delay(2000);
+    isLampReady = true;
   }
   commWithSerial();
+  for (int i = 0; i < NumOfButtons; i++)  {
+    // Update the Bounce instance :
+    buttons[i].update();
+    // Serial.println(buttons[i].read());
+  }
+  processButtons();
+
   //printValues2LCD();
 }
-
 
 // Bu fonksiyonun işlevlerini radio olmadan yapalım
 // Lamba ile mesajlaşma işleri
 void commWithSerial() {
-
-  String message;
-  message = "";
-
-  if (mySerial.available() > 0)
-  {
+  String message = "";
+  int msgLength = 0;
+  if (mySerial.available() > 0) {
     message = mySerial.readString();
-    Serial.print("Gelen mesaj: "); Serial.println(message);
-
-    if (message == "<LMD1>") {
+    msgLength = message.length();
+    Serial.print("Gelen mesaj: ");  Serial.print(message);Serial.print("  mesaj boyu : ");Serial.println(msgLength);
+    if (message.startsWith("<LMD1>")) {
       LCDInfo = "Lift indiriliyor";
-      digitalWrite(RLiftUp, HIGH);
-      delay(3000);
+      isWorking = true;
+      if (isLiftUp) {
+        isLiftUp = false;
+        digitalWrite(LiftUpRelay, HIGH);
+      }
       // LMP mesajı 1 geldi. İndirme işemini başlat
-      digitalWrite(RLiftDown, LOW);
+      isLiftDown = true;
+      digitalWrite(LiftDownRelay, LOW);
+
     }
-    if (message == "<LMD0>") {
+    if (message.startsWith("<LMD0>")) {
+      isWorking = true;
       LCDInfo = "Lift durduruldu.";
-      digitalWrite(RLiftUp, HIGH);
-      delay(3000);
+      isLiftUp = false;
+      isLiftDown = false;
+      digitalWrite(LiftUpRelay, HIGH);
       // LMP mesajı 0 geldi. İndirme işemini durdur.
-      digitalWrite(RLiftDown, HIGH);
+      digitalWrite(LiftDownRelay, HIGH);
       isWorking = true;
     }
-    if (message == "<LMU1>") {
+    if (message.startsWith("<LMU1>")) {
+      isWorking = true;
       LCDInfo = "Lift kaldırılıyor";
-      digitalWrite(RLiftDown, HIGH);
-      delay(3000);
+      if (isLiftDown) {
+        digitalWrite(LiftDownRelay, HIGH);
+        isLiftDown = false;
+        delay(100);
+      }
       // LMU mesajı 1 geldi. Kaldırma işlemine başla
-      digitalWrite(RLiftUp, LOW);
+      isLiftUp = true;
+      digitalWrite(LiftUpRelay, LOW);
       bekleme = millis();
     }
-    if (message == "<LMU0>") {
+    if (message.startsWith("<LMU0>")) {
+      isWorking = true;
       LCDInfo = "Lift durduruldu.";
-      digitalWrite(RLiftDown, HIGH);
-      delay(3000);
+      isLiftUp = false;
+      isLiftDown = false;
+      digitalWrite(LiftDownRelay, HIGH);
       // LMU mesajı 0 geldi. Kaldırma işlemini durdur
-      digitalWrite(RLiftUp, HIGH);
+      digitalWrite(LiftUpRelay, HIGH);
       isWorking = false;
+    }
+    if (message.startsWith("<ISI")) {
+      String Tmp = message.substring(5, message.length());
+      isi = Tmp.toInt();
+    }
+    if (message.startsWith("<LRD1>")) {
+      isLampReady = true;
+      if (mySerial.available() > 0)
+        message = mySerial.readString();
+      Serial.println("Lift Hazır.");
     }
     Serial.println(LCDInfo);
     printValues2LCD();
   }
 }
 
-
-void processButtons(int buton) {
+void processButtons() {
   String message;
 
   message = "";
-  Serial.print("Buton basıldı"); Serial.println(buton);
+  // Serial.print("Buton basıldı"); Serial.println(buton);
   if (!isWorking)
   {
-    if (buttons[buton] == TimeUpPin)
+    if (buttons[0].fell() ) //TimeUpButton
     {
-
       LCDTimeInterval++;
       minute = LCDTimeInterval;
       second = 0;
       TimeInterval = LCDTimeInterval * 60; //Saniyeye çevir
-      //Serial.print("TimeInterval : "); Serial.print(TimeInterval); Serial.print(" LCD Interval: "); Serial.println(LCDTimeInterval);
+      message = "<TIM" + String(TimeInterval) + ">"; //TimeInterval saniye cinsinden iletilir.
+      mySerial.print(message);
+      delay(1000);
+      //     Serial.print("TimeInterval : "); Serial.print(TimeInterval); Serial.print(" LCD Interval: "); Serial.println(LCDTimeInterval);
     }
-    if  (buttons[buton] == TimeDownPin)
+    if  (buttons[1].fell() ) //TimeDownButton
     {
 
       LCDTimeInterval--;
       minute = LCDTimeInterval;
       second = 0;
       TimeInterval = LCDTimeInterval * 60; //Saniyeye çevir
-      //Serial.print("TimeInterval : "); Serial.print(TimeInterval); Serial.print(" LCD Interval: "); Serial.println(LCDTimeInterval);
+      message = "<TIM" + String(TimeInterval) + ">"; //TimeInterval saniye cinsinden iletilir.
+      mySerial.print(message);
+      delay(1000);
+      //     Serial.print("TimeInterval : "); Serial.print(TimeInterval); Serial.print(" LCD Interval: "); Serial.println(LCDTimeInterval);
     }
-    if (buttons[buton]  == DistanceUpPin)
+    if (buttons[2].fell()) //DistanceUpButton
     {
       LCDDistance++;
-      Distance = LCDDistance * 10; //mm çevir
-      //Serial.print("Distance : "); Serial.print(Distance); Serial.print(" LCD Distance : "); Serial.println(LCDDistance);
+      Distance = LCDDistance ; //mm çevir
+      message = "<DST" + String(Distance) + ">";     // Mesafe cm cinsinden iletilir
+      mySerial.print(message);
+      delay(1000);
+      //    Serial.print("Distance : "); Serial.print(Distance); Serial.print(" LCD Distance : "); Serial.println(LCDDistance);
     }
-    if (buttons[buton]  == DistanceDownPin)
+    if (buttons[3].fell() ) //DistanceDownButton
     {
       if (LCDDistance > 0) {
         LCDDistance--;
       }
-      Distance = LCDDistance * 10; //mm çevir
-      //Serial.print("Distance : "); Serial.print(Distance); Serial.print(" LCD Distance : "); Serial.println(LCDDistance);
+      Distance = LCDDistance ; //mm çevir
+      message = "<DST" + String(Distance) + ">";     // Mesafe cm cinsinden iletilir
+      mySerial.print(message);
+      delay(1000);
+      //    Serial.print("Distance : "); Serial.print(Distance); Serial.print(" LCD Distance : "); Serial.println(LCDDistance);
     }
-    if (buttons[buton]  == heatDownPin)
-    {
-      sicaklik --;
-      Serial.print("Sıcaklık - : "); Serial.println(sicaklik);
-    }
-    if (buttons[buton]  == heatUpPin)
-    {
-      sicaklik ++;
-      Serial.print("Sıcaklık + : "); Serial.println(sicaklik);
-    }
-    if (buttons[buton]  == StartPin)
+    if (buttons[4].fell()) //StartButton
     {
       Serial.println("Start basildi...." );
       isWorking = true;
       minute = LCDTimeInterval;
       second = 0;
 
-      // Lambaya mesaj yolla
-      message = "<TIM" + String(TimeInterval) + ">"; //TimeInterval saniye cinsinden iletilir.
-      mySerial.print(message);
-      delay(1000);
-      // Lambaya mesaj yolla
-      message = "<DST" + String(Distance) + ">";     // Mesafe cm cinsinden iletilir
-      mySerial.print("<DST"); Serial.print(Distance); Serial.println(">");
-      delay(1000);
-      // Lambaya mesaj yolla
-      message = "<HEA" + String(sicaklik) + ">";     // Mesafe cm cinsinden iletilir
-      mySerial.print("<HEA"); Serial.print(sicaklik); Serial.println(">");
-      delay(1000);
+      /*
+            // Lambaya mesaj yolla
+            message = "<HEA" + String(sicaklik) + ">";
+            mySerial.print(message);
+
+      */
       // Lambaya mesaj yolla
       mySerial.print("<CMD1>");
-
-      LCDInfo = "ÇALIŞIYOR";
       delay(1000);
+      LCDInfo = "CALISIYOR";
     }
   }
-  if (isWorking)
+
+  if (isWorking) //Eğer çalışıyorsa Stop pini kontrol edilir. Diğerlerine bakılmaz.
   {
-    if (buttons[buton]  == StopPin)
+    if (buttons[5].fell()) //StopButton
     {
-      //Serial.println("Stop basildi...." );
+      Serial.println("Stop basildi...." );
+      digitalWrite(LiftDownRelay, HIGH);
+      digitalWrite(LiftUpRelay, HIGH);
+
       mySerial.print("<CMD0>");
       delay(1000);
       minute = LCDTimeInterval;
       second = 0;
       isWorking = false;
-      LCDInfo = "DURDU";
-      // Lambaya mesaj yolla
+      LCDInfo = "DURDURULDU";
     }
   }
+  ///////////////////////////// LIFT UP TUSU //////////////////////////////////////////////
+  if (buttons[6].fell() && digitalRead(LiftDownButton) != LOW ) //LiftUpButton press
+  {
+    if (isLiftDown) {
+      isLiftDown = false;
+      //      Serial.println("Down kapat");
+      digitalWrite(LiftDownRelay, HIGH); // Yukarı rölesi çekili olabilir. Kapat
+      delay(100);
+    }
+    isLiftUp = true;
+    digitalWrite(LiftUpRelay, LOW);
+  }
+  if (buttons[6].rose()) //LiftUpButton reease
+  {
+    isLiftUp = false;
+    digitalWrite(LiftUpRelay, HIGH);
+  }
+
+  ///////////////////////////// LIFT DOWN TUSU //////////////////////////////////////////////
+
+  if (buttons[7].fell() && digitalRead(LiftUpButton) != LOW ) //LiftUpButton press
+  {
+    if (isLiftUp) {
+      isLiftUp = false;
+      //      Serial.println("Down kapat");
+      digitalWrite(LiftUpRelay, HIGH); // Yukarı rölesi çekili olabilir. Kapat
+      delay(100);
+    }
+    isLiftDown = true;
+    digitalWrite(LiftDownRelay, LOW);
+  }
+  if (buttons[7].rose()) //LiftUpButton reease
+  {
+    isLiftDown = false;
+    digitalWrite(LiftDownRelay, HIGH);
+  }
+
   printValues2LCD();
 }
 
@@ -328,10 +397,14 @@ void printValues2LCD() {
     u8g2.setCursor(0, 10);
     u8g2.print(F("MESAFE: "));
     u8g2.print(LCDDistance);
-
+    /*
+        u8g2.setCursor(0, 20);
+        u8g2.print(F("SICAKLIK: "));
+        u8g2.print(sicaklik);
+    */
     u8g2.setCursor(0, 20);
     u8g2.print(F("SICAKLIK: "));
-    u8g2.print(sicaklik);
+    u8g2.print(isi);
 
     u8g2.setCursor(0, 30);
     u8g2.print(F("ZAMAN: "));
@@ -346,11 +419,11 @@ void printValues2LCD() {
     }
     u8g2.print(second);
 
-    u8g2.setCursor(0, 40);
+    //u8g2.setCursor(0, 40);
+    u8g2.setCursor(80, 20);
     u8g2.print(LCDInfo);
 
     u8g2.setCursor(0, 55);
     u8g2.print(F("www.brsservis.com"));
   } while ( u8g2.nextPage() );
-
 }

@@ -7,9 +7,12 @@
   'LMU 0' stop lowering lamp
   'LMD 1' raise lamp
   'LMD 0 stop rising lamp
-  'DST XXX' Distance set to/read XXX (0-999 mm)
+  'DST XXX' minDistance set to/read XXX (0-999 mm)
   'TIM XXX' Lamp Working time set/remaining
-
+  'HEA XXX' Ayarlanan Sıcaklık
+  'ISI XXX' Ölçülen Sıcaklık
+  'LRD1 Lamba ready
+  'CRD1 Konsol ready
 */
 
 #include "Arduino.h"
@@ -17,62 +20,64 @@
 #include <Wire.h>
 #include <VL53L0X.h>
 #include <SoftwareSerial.h> // soft serial
-#define rxPin 4             // soft serial
-#define txPin 3             // soft serial
+#include "NewPing.h"
+#include <Adafruit_MLX90614.h> //Isı sensörü
+Adafruit_MLX90614 mlx = Adafruit_MLX90614();
 
-VL53L0X sensor;
-#define RLamba A0         //Lamba rölesi
-#define RFan A1           //Fan rölesi
 
-#define CE 9
-#define CSN 10
-#define MOSI 11
-#define MISO 12
-#define SCK 13
+// Hook up HC-SR04 with Trig to Arduino Pin 10, Echo to Arduino pin 13
+// Maximum Distance is 400 cm
+
+#define TRIGGER_PIN  9
+#define ECHO_PIN     10
+#define MAX_DISTANCE 400
+
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
+
+#define rxPin 4           // RX soft serial
+#define txPin 3           // TX soft serial
+//A4 (SDA), A5 (SCL)
+#define RLamba1 12        //Lamba rölesi
+#define RLamba2 13        //Fan rölesi
+
+//#define CE 9
+//#define CSN 10
+//#define MOSI 11
+//#define MISO 12
+//#define SCK 13
+
 #define DIST_SCL A4
 #define DIST_SDA A5
 
 boolean Start; //0 Stop, 1 Start
-int LampPosition; //1 down, 0  up
-int Distance; //in mm
+int minDistance; //in mm
 int TimeInterval; //Working time
 
 int timerSayac;
-boolean startTimer;
-boolean isWorking;
+boolean startTimer; //Geri sayım başlasın mı
+boolean isWorking; //Çalışır durumda mı
 String message;
 boolean newData = false;
 
 int sicaklik;
-int say = 0;
 int bekleme = 0;
+boolean isConsoleReady = false;
 
 boolean buttonState = 0;
 SoftwareSerial mySerial = SoftwareSerial (rxPin, txPin);
 
 //////////// SETUP ////////// SETUP ////////// SETUP ////////// SETUP ////////// SETUP /////
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
-  Serial.println("Start lamba");
-  pinMode(RLamba, OUTPUT);
-  pinMode(RFan, OUTPUT);
-  digitalWrite(RLamba, HIGH);
-  digitalWrite(RFan, HIGH);
-  pinMode(13, OUTPUT);
+  Serial.println("Lamba: Start setup");
+  pinMode(RLamba1, OUTPUT);
+  pinMode(RLamba2, OUTPUT);
+  digitalWrite(RLamba1, HIGH);
+  digitalWrite(RLamba2, HIGH);
 
-  Wire.begin();
-  sensor.init();
-  sensor.setTimeout(500);
+  mlx.begin();  //Isı sensoru gy-906
 
-  // Uzun mesafe yavaş hız okuma modu
-  // ------------------------------
-  sensor.setSignalRateLimit(0.1);
-  // increase laser pulse periods (defaults are 14 and 10 PCLKs)
-  sensor.setVcselPulsePeriod(VL53L0X::VcselPeriodPreRange, 18);
-  sensor.setVcselPulsePeriod(VL53L0X::VcselPeriodFinalRange, 14);
-
-  // ------------------------------
   pinMode (rxPin, INPUT);
   pinMode (txPin, OUTPUT);
   mySerial.begin(9600);
@@ -81,8 +86,7 @@ void setup() {
   isWorking = false;
   startTimer = false;
   Start = 0; //0 Stop, 1 Start
-  LampPosition = 0; //1 down, 0 up
-  Distance = 600; //in mm
+  minDistance = 60; //in cm
   TimeInterval = 240; //Working time 4min default
   timerSayac = TimeInterval;
 
@@ -104,173 +108,211 @@ void setup() {
 
   sei();
   /* Timer1 kesmesinin çalışabilmesi için tüm kesmeler aktif hale getirildi */
+
   Serial.println("Setup End");
 }
 
+/////////////////////////////////////////////////////////////////////////////
 /* Arduino otomatik olarak her saniye aşağıdaki fonksiyonu çalıştıracaktır */
+/* Time interrupt function                                                 */
+/////////////////////////////////////////////////////////////////////////////
 ISR(TIMER1_COMPA_vect) {
+  /*sicaklik = mlx.readObjectTempC();
+    String isi = "<ISI" + sicaklik;
+    mySerial.print(isi);
+  */
   if (isWorking && startTimer) {
     //Serial.print("timerSayac: "); Serial.println(timerSayac);
     if (timerSayac > 0) {
       timerSayac--;
+    } else {
+      startTimer = false;
     }
-    //süre bitti çalışma dursun
-    //bu kısmı runProgram() fonksiyonu hallediyor
 
-    if (bekleme > 0 && millis() >= bekleme +  180000) // 3dk = 3 x 60 sn x 1000 ms
+    // 3 dk bekle. Bu süre içerisinde aşağıdaki kupanın gitmesi gerekiyor.
+    // Yoksa yeni kupa sanıp tekrar başlıyor.
+    if (millis() >= bekleme +  180000) // 3  x 60 sn x 1000 ms
     {
-      digitalWrite(RLiftUp, HIGH);
+      bekleme = 0;      
+      startTimer = false;
       isWorking = false;
-      bekleme = 0;
     }
   }
 }
 
 ////////////////// LOOP ////////// LOOP ////////// LOOP ////////// LOOP ////////// LOOP /////
 void loop() {
-
+  if (!isConsoleReady) {
+    delay(5000);
+    isConsoleReady = true;
+  }
   // Konsoldan gelen bir komut/bilgi var mı kontrol et
   commWithSerial();
 
-  // Çalışmıyorsan altta kupa var mıkontrol et. Mesafe 2000 mm (2 m) altında ise aşağıda bir şey var
-  // sistem çalışmaya başlasın. (deneme yanılma ile düzeltilecek)
-
-  if (!isWorking && mesafeOku(2000) < 2000 && say < 5) {
-    isWorking = true;
-    //Serial.println("Kupa geldi... Çalış");
+  if (!isWorking && bekleme == 0) { //Sistem çalışır durumda değil ve bekleme sürecinde değilse
+    if (kupaVarMi()) {
+      isWorking = true;
+      Serial.println("Kupa geldi... Çalış");
+    }
   }
-
   // çalışma komutu ya da kupa geldi ise isWorking true olmalı, o zaman program başlasın.
   if (isWorking) {
     runProgram();
   }
+  //Serial.print("*C\tObject = "); Serial.print(sicaklik); Serial.println("*C");
+}
+////////////////// LOOP ////////// LOOP ////////// LOOP ////////// LOOP ////////// LOOP /////
+
+//lamba yukarıda beklerken, Aşağı bir kupa gelip gelmediğini kontrol ederken kullanılıyor.
+bool kupaVarMi() {
+  int sayac = 0; // 5 kez dıgru bir sekilde okumasını saglamak icin
+  int test = 0;  // max kaç kere test edecek
+  float mesafe;
+
+  // 5 kere denemeden geçme
+  while (sayac < 5 && test < 20)
+  {
+    mesafe = readDistance();
+    if (mesafe >= minDistance && mesafe < 160) {//160 cm yukarıda dururken altına birsey geldi. 60cmden yüksek olduğundan emin ol
+      sayac++;
+    } else {
+      sayac = 0;
+    }
+    // Serial.print("Sayac: "); Serial.println(sayac);
+    Serial.print("Bekleme Mesafe: "); Serial.println(mesafe);
+    test++;
+  }
+
+  // yeterince doğru mesafe okundu ise aşağıda bir şey var
+  if (sayac > 4) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
-int mesafeOku(int testValue) {
-  if (bekleme > 0 && millis() >= bekleme +  180000) // 3dk = 3 x 60 sn x 1000 ms
-  {
-    bekleme = 0;
-    mesafe=2000;
-  } else {  
-    int mesafe = readDistance();
-    // 5 kere denemeden geçme
-    mesafe = readDistance();
-    if (mesafe < testValue) {
-      say++;
-    } else {
-      say = 0;
-    }
-  }
-  Serial.print("Mesafe: "); Serial.println(mesafe);
-  return mesafe;
+
+int readDistance() {
+  float okunanMesafe;
+  okunanMesafe = sonar.ping_cm();
+  //Serial.print("Okunan mesafe: "); Serial.println(okunanMesafe);
+  return okunanMesafe;
 }
 
 void commWithSerial() {
-
-  char receivedChars[9];
-  static boolean recvInProgress = false;
-  static byte ndx = 0;
-  char startMarker = '<';
-  char endMarker = '>';
-  char rc;
   String msg;
-
+  //  Serial.println("Seri okuma başlangıç");
   if (mySerial.available() > 0)
   {
     message = mySerial.readString();
-
-    Serial.print("Msg = "); Serial.println(message);
+    Serial.print("Gelen Mesaj = "); Serial.println(message);
     if (message.startsWith("<DST")) {
-      msg = message.substring(4, 3);
-      Distance = msg.toInt();
+      msg = message.substring(5, 8);
+      minDistance = msg.toInt();
+      Serial.print("minDistance = "); Serial.println(minDistance);
     }
     if (message.startsWith("<HEA")) {
-      msg = message.substring(4, 3);
+      msg = message.substring(5, 8);
       sicaklik = msg.toInt();
+      Serial.print("sicaklik = "); Serial.println(sicaklik);
     }
     if (message.startsWith("<TIM")) {
-      msg = message.substring(4, 3);
+      msg = message.substring(5, 8);
       TimeInterval = msg.toInt();
+      Serial.print("TimeInterval = "); Serial.println(TimeInterval);
     }
-    if (message == "<CMD1>") {
+
+    if (message.startsWith("<CMD1>")) {
       isWorking = true;
     }
-    if (message == "<CMD0>") {
-      isWorking = false;
+    if (message.startsWith("<CMD0>")) {
+      stopAndReset();
     }
-    blinkLed();
+    if (message.startsWith("<CRD1>")) {
+      isConsoleReady = true;
+      Serial.println("Konsol Hazır: ");
+    }
   }
 }
-void blinkLed() {
-  digitalWrite(13, HIGH);
-  delay(50);
-  digitalWrite(13, LOW);
-  delay(50);
-  digitalWrite(13, HIGH);
-  delay(50);
-  digitalWrite(13, LOW);
-  delay(50);
-  digitalWrite(13, HIGH);
-  delay(50);
-  digitalWrite(13, LOW);
-  delay(50);
-  digitalWrite(13, HIGH);
-  delay(50);
-  digitalWrite(13, LOW);
-  delay(50);
-  digitalWrite(13, HIGH);
-  delay(50);
-  digitalWrite(13, LOW);
-  delay(50);
+
+//wayToTruck, lamba aşağı inerken kullanılıyor. Kupaya olan mesafe limit değer olana kadar aşağı in
+int wayToTruck() {
+  int  sayac = 0;
+  int test;
+  float mesafe;
+
+
+  while (sayac < 5 )
+  {
+    mesafe = readDistance();
+    if (mesafe <= minDistance ) {//160 cm yukarıda dururken altına birsey geldi. 60cmden yüksek olduğundan emin ol
+      sayac++;
+    } else {
+      sayac = 0;
+    }
+    //    Serial.print("minDistance: "); Serial.println(minDistance);
+    //   Serial.print("Kupaya kalan Mesafe: "); Serial.println(mesafe);
+
+    commWithSerial();
+  }
+  if (sayac > 4) {
+    return true;
+  } else {
+    return false;
+  }
+}
+//Karşıdan stop tuşu yada reset algılandığında herşeyi güvenli hale getir.
+void stopAndReset() {
+  isWorking = false;
+  startTimer = false;
+  timerSayac = TimeInterval;
+  digitalWrite(RLamba1, HIGH);
+  digitalWrite(RLamba2, HIGH);
+
+  // Limit switch gelince duracak. Biz elleşmiyoz.
+
 }
 
 void runProgram() {
-  char str[6];
   //Serial.print("startTimer"); Serial.println(startTimer);
   if (!startTimer) {
-
+ 
     // 1.adım İndirme işemini başlat
     //Serial.println("1.adım İndirme işemini başlat");
-    // Lamba aşşağı mesajını konsola yolla ki motoru çalıştırsın
-    mySerial.print ("<LMD1>");
-    Serial.println("<LMD1>");
-    delay(1000);
-    blinkLed();
-    // Okunan Mesafe Distance'dan küçük olduğu sürece bekle. Default 600mm
-    //Serial.print("Distance: "); Serial.print(readDistance()); Serial.print("  test value : "); Serial.println(Distance);
-    int mesafe = readDistance();
-    int say = 0; // 5 kere denemeden geçme
+    // Lamba aşağı mesajını konsola yolla ki motoru çalıştırsın
+    Serial.println("Lamba aşağı");
+    mySerial.print("<LMD1>");
+    delay(500);
 
-    while (mesafe > Distance && say < 5) {
-      mesafe = mesafeOku(Distance);
-    }
+    // Okunan Mesafe minDistance'dan küçük olduğu sürece bekle. Default 600mm
+    wayToTruck();
 
     // Lamba aşşağı bitti mesajını konsola yolla ki motoru durdursun
-    mySerial.print ("<LMD0>");
-    Serial.println("<LMD0>");
-    delay(1000);
+    Serial.println("Lift motoru durdur");
+    mySerial.print("<LMD0>");
+    delay(500);
 
     // 2.adım Lambayı Yak
-    //Serial.println("2.adım Lambayı Yak ");
-    digitalWrite(RLamba, LOW);
-    digitalWrite(RFan, LOW);
+    Serial.println("2.adım Lambayı Yak ");
+    digitalWrite(RLamba1, LOW);
+    digitalWrite(RLamba2, LOW);
     // 3.adım Süreyi başlat
     timerSayac = TimeInterval;
     Serial.println("3.adım Süreyi başlat ");
     startTimer = true;
   }
-
-  if (startTimer) {
+  String mesaj;
+  if (startTimer && bekleme == 0) {
     //Serial.print("Timersayac:"); Serial.println(timerSayac);
-
     if (timerSayac == 0) {
       // 4.adım Süre bitti ise Lambayı kapat, Yukarı kaldır
-      digitalWrite(RLamba, HIGH);
-      digitalWrite(RFan, HIGH);
+
+      digitalWrite(RLamba1, HIGH);
+      digitalWrite(RLamba2, HIGH);
       //Lamba yukarı mesajını yolla ki motor çalıştırsın
-      mySerial.print ("<LMU1>");
-      Serial.println("<LMU1>");
-      delay(1000);
+      Serial.println("Lift Motor yukarı");
+      mySerial.print("<LMU1>");
+      delay(500);
       // Limit switch gelince duracak. Biz elleşmiyoz.
       startTimer = false;
       bekleme = millis();
@@ -278,49 +320,3 @@ void runProgram() {
   }
 }
 
-void processMessage(String input) {
-  input.toUpperCase();
-  Serial.print("Gelen mesaj: "); Serial.println(input);
-  if (!isWorking) {//Lamba meşgul değilse
-    if (input == "<CMD1>")
-    {
-      // Start komutu geldi.
-      isWorking = true;
-    }
-    if (input.startsWith("<LMP"))
-    {
-      //Serial.println("LMP gelmiş");
-      // Lamba indir kaldır komutla olmaz
-    }
-    if (input.startsWith("<DST"))
-    {
-      //Serial.println("DST Gelmiş");
-      String Tmp = input.substring(4, 3);
-      Distance = Tmp.toInt();
-    }
-    if (input.startsWith("<TIM")) {
-      //Serial.println("TIM Gelmiş");
-      String Tmp = input.substring(4, 3);
-      TimeInterval = Tmp.toInt();
-      timerSayac = TimeInterval;
-    }
-  }
-}
-
-int readDistance() {
-
-  long okunanMesafe;
-  okunanMesafe = sensor.readRangeSingleMillimeters();
-
-  // Mesafe sensöründe <40 ve >2000 değerler gözardı edilsin
-  // Saçma rakamlar gelebiliyor 0 ya da 8160 gibi
-
-  if (okunanMesafe > 2000) {
-    okunanMesafe = 2000;
-  }
-  if (okunanMesafe < 40) {
-    okunanMesafe = 40;
-  }
-  //Serial.print("Mesafe : "); Serial.println(okunanMesafe);
-  return okunanMesafe;
-}

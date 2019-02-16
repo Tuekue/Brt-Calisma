@@ -46,8 +46,8 @@ NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
 //#define MISO 12
 //#define SCK 13
 
-#define DIST_SCL A4
-#define DIST_SDA A5
+#define HEAT_SCL A5
+#define HEAT_SDA A4
 
 boolean Start; //0 Stop, 1 Start
 int minDistance; //in mm
@@ -59,7 +59,8 @@ boolean isWorking; //Çalışır durumda mı
 String message;
 boolean newData = false;
 
-int sicaklik;
+int heatSet;
+int heatRead;
 unsigned long bekleme = 0;
 boolean isConsoleReady = false;
 
@@ -89,6 +90,7 @@ void setup() {
   minDistance = 60; //in cm
   TimeInterval = 240; //Working time 4min default
   timerSayac = TimeInterval;
+  heatSet = 90; // Eğer bir değer gelmezse def. 90 olacak
 
   /* Saniyede 1 çalışacak kesme ayarlanıyor */
   cli();
@@ -117,14 +119,14 @@ void setup() {
 /* Time interrupt function                                                 */
 /////////////////////////////////////////////////////////////////////////////
 ISR(TIMER1_COMPA_vect) {
-  /*sicaklik = mlx.readObjectTempC();
-    String isi = "<ISI" + sicaklik;
-    mySerial.print(isi);
-  */
+
   if (isWorking && startTimer) {
     //Serial.print("timerSayac: "); Serial.println(timerSayac);
     if (timerSayac > 0) {
       timerSayac--;
+      isiKontrol();
+      Serial.print(".");
+
     } else {
       startTimer = false;
     }
@@ -162,9 +164,26 @@ void loop() {
   if (isWorking) {
     runProgram();
   }
-  //Serial.print("*C\tObject = "); Serial.print(sicaklik); Serial.println("*C");
+   heatRead = mlx.readObjectTempC();
+
+  //  Serial.print("Sicaklik = "); Serial.print(mlx.readObjectTempC()); Serial.println("*C");
+  //  Serial.print("Mesafe = "); Serial.println(sonar.ping_cm());
 }
-////////////////// LOOP ////////// LOOP ////////// LOOP ////////// LOOP ////////// LOOP /////
+
+///////////// isiKontrol ////////////////// isiKontrol ////////////////// isiKontrol ////////
+void isiKontrol() {
+  String isi = "<ISI" + String(heatRead) + ">";
+  mySerial.print(isi);
+  Serial.print("HeatSet : "); Serial.print(heatSet); Serial.print("\tHeatRead : "); Serial.println(heatRead);
+  if (heatRead > heatSet + 2) {
+    digitalWrite(LampRelay, HIGH);
+    digitalWrite(FanRelay, HIGH);
+  }
+  if (heatRead < heatSet - 2) {
+    digitalWrite(LampRelay, LOW);
+    digitalWrite(FanRelay, LOW);
+  }
+}
 
 //lamba yukarıda beklerken, Aşağı bir kupa gelip gelmediğini kontrol ederken kullanılıyor.
 bool kupaVarMi() {
@@ -210,25 +229,28 @@ void commWithSerial() {
     message = mySerial.readString();
     Serial.print("Gelen Mesaj = "); Serial.println(message);
     if (message.startsWith("<DST")) {
-      msg = message.substring(5, 8);
+      msg = message.substring(4, message.length() - 1);
       minDistance = msg.toInt();
       Serial.print("minDistance = "); Serial.println(minDistance);
     }
     if (message.startsWith("<HEA")) {
-      msg = message.substring(5, 8);
-      sicaklik = msg.toInt();
-      Serial.print("sicaklik = "); Serial.println(sicaklik);
+
+      msg = message.substring(4, message.length() - 1);
+      heatSet = msg.toInt();
+      Serial.print("heatSet = "); Serial.println(heatSet);
     }
     if (message.startsWith("<TIM")) {
-      msg = message.substring(5, 8);
+      msg = message.substring(4, message.length() - 1);
       TimeInterval = msg.toInt();
       Serial.print("TimeInterval = "); Serial.println(TimeInterval);
     }
 
     if (message.startsWith("<CMD1>")) {
+      Serial.println("Start tusuna basildi");
       isWorking = true;
     }
     if (message.startsWith("<CMD0>")) {
+      Serial.println("Stop tusuna basildi");
       stopAndReset();
     }
     if (message.startsWith("<CRD1>")) {
@@ -245,23 +267,27 @@ int wayToTruck() {
   float mesafe;
 
 
-  while (sayac < 5 )
+  while (sayac < 5 && isWorking)
   {
     mesafe = readDistance();
-    if (mesafe <= minDistance ) {//160 cm yukarıda dururken altına birsey geldi. 60cmden yüksek olduğundan emin ol
+    if (mesafe > 5 && mesafe <= minDistance ) {//160 cm yukarıda dururken altına birsey geldi. 60cmden yüksek olduğundan emin ol
       sayac++;
     } else {
       sayac = 0;
     }
     //    Serial.print("minDistance: "); Serial.println(minDistance);
-    //   Serial.print("Kupaya kalan Mesafe: "); Serial.println(mesafe);
-
-    commWithSerial();
+    Serial.print("Sayac: "); Serial.print(sayac);
+    Serial.print("\tKupaya kalan Mesafe: "); Serial.println(mesafe);
+    if (mySerial.available() > 0)
+    {
+      commWithSerial();
+    }
   }
+  Serial.println("***********************************************************************************************");
   if (sayac > 4) {
-    return true;
+    return mesafe;
   } else {
-    return false;
+    return 0;
   }
 }
 //Karşıdan stop tuşu yada reset algılandığında herşeyi güvenli hale getir.
@@ -278,7 +304,7 @@ void stopAndReset() {
 
 void runProgram() {
   //Serial.print("startTimer"); Serial.println(startTimer);
-  if (!startTimer && bekleme == 0) {
+  if (!isWorking && !startTimer && bekleme == 0) {
 
     // 1.adım İndirme işemini başlat
     //Serial.println("1.adım İndirme işemini başlat");
@@ -288,24 +314,25 @@ void runProgram() {
     delay(500);
 
     // Okunan Mesafe minDistance'dan küçük olduğu sürece bekle. Default 600mm
-    wayToTruck();
 
-    // Lamba aşşağı bitti mesajını konsola yolla ki motoru durdursun
-    Serial.println("Lift motoru durdur");
-    mySerial.print("<LMD0>");
-    delay(500);
+    if (wayToTruck() != 0) { //sayac 0 ise stop geldi
+      // Lamba aşşağı bitti mesajını konsola yolla ki motoru durdursun
+      Serial.println("Lift motoru durdur");
+      mySerial.print("<LMD0>");
+      delay(500);
 
-    // 2.adım Lambayı Yak
-    Serial.println("2.adım Lambayı Yak ");
-    digitalWrite(LampRelay, LOW);
-    digitalWrite(FanRelay, LOW);
-    // 3.adım Süreyi başlat
-    timerSayac = TimeInterval;
-    Serial.println("3.adım Süreyi başlat ");
-    startTimer = true;
+      // 2.adım Lambayı Yak
+      Serial.println("2.adım Lambayı Yak ");
+      digitalWrite(LampRelay, LOW);
+      digitalWrite(FanRelay, LOW);
+      // 3.adım Süreyi başlat
+      timerSayac = TimeInterval;
+      Serial.println("3.adım Süreyi başlat ");
+      startTimer = true;
+    }
   }
   String mesaj;
-  if (startTimer && bekleme == 0) {
+  if (isWorking && startTimer && bekleme == 0) {
     /*
       Serial.print("Timersayac:"); Serial.print(timerSayac);
       Serial.print(" bekleme:"); Serial.print(bekleme);

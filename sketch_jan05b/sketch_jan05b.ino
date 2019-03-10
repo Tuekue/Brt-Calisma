@@ -1,23 +1,17 @@
-int heatRead0 = 0;
-int heatRead1 = 0;
+#define LampRelay 11            //Lamba rölesi
 
 void setup()
 {
-  pinMode(A0, INPUT);
-  pinMode(A1, INPUT);
+  pinMode(LampRelay, OUTPUT);
+  digitalWrite(LampRelay, HIGH);
   Serial.begin(9600);
 
 }
 
 void loop()
 {
-  heatRead0 = analogRead(A0);
-  heatRead1 = analogRead(A1);
-  Serial.println(-40 + 0.488155 * (analogRead(A0) - 20));
-  //Serial.print("A0="); Serial.println(heatRead0);
-  //Serial.print("A1="); Serial.println(heatRead1);
-  Serial.println(digitalRead(A0));
-  Serial.println();
-
- delay(1000); // Delay a little bit to improve simulation performance
+  digitalWrite(LampRelay, LOW);
+  delay(1000); // Delay a little bit to improve simulation performance
+  digitalWrite(LampRelay, HIGH);
+  delay(1000); // Delay a little bit to improve simulation performance
 }

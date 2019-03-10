@@ -87,7 +87,7 @@ void setup() {
   isWorking = false;
   startTimer = false;
   Start = 0; //0 Stop, 1 Start
-  minDistance = 60; //in cm
+  minDistance = 70; //in cm
   TimeInterval = 240; //Working time 4min default
   timerSayac = TimeInterval;
   heatSet = 90; // Eğer bir değer gelmezse def. 90 olacak
@@ -173,8 +173,8 @@ void loop() {
 ///////////// isiKontrol ////////////////// isiKontrol ////////////////// isiKontrol ////////
 void isiKontrol() {
   String isi = "<ISI" + String(heatRead) + ">";
-  mySerial.print(isi);
-  Serial.print("HeatSet : "); Serial.print(heatSet); Serial.print("\tHeatRead : "); Serial.println(heatRead);
+  mySerial.println(isi);
+  //Serial.print("HeatSet : "); Serial.print(heatSet); Serial.print("\tHeatRead : "); Serial.println(heatRead);
   if (heatRead > heatSet + 2) {
     digitalWrite(LampRelay, HIGH);
     digitalWrite(FanRelay, HIGH);
@@ -231,18 +231,18 @@ void commWithSerial() {
     if (message.startsWith("<DST")) {
       msg = message.substring(4, message.length() - 1);
       minDistance = msg.toInt();
-      Serial.print("minDistance = "); Serial.println(minDistance);
+      Serial.print("GM minDistance = "); Serial.println(minDistance);
     }
     if (message.startsWith("<HEA")) {
 
       msg = message.substring(4, message.length() - 1);
       heatSet = msg.toInt();
-      Serial.print("heatSet = "); Serial.println(heatSet);
+      Serial.print("GM heatSet = "); Serial.println(heatSet);
     }
     if (message.startsWith("<TIM")) {
       msg = message.substring(4, message.length() - 1);
       TimeInterval = msg.toInt();
-      Serial.print("TimeInterval = "); Serial.println(TimeInterval);
+      Serial.print("GM TimeInterval = "); Serial.println(TimeInterval);
     }
 
     if (message.startsWith("<CMD1>")) {
@@ -276,7 +276,7 @@ int wayToTruck() {
       sayac = 0;
     }
     //    Serial.print("minDistance: "); Serial.println(minDistance);
-    Serial.print("Sayac: "); Serial.print(sayac);
+    //Serial.print("Sayac: "); Serial.print(sayac);
     Serial.print("\tKupaya kalan Mesafe: "); Serial.println(mesafe);
     if (mySerial.available() > 0)
     {
@@ -303,8 +303,11 @@ void stopAndReset() {
 }
 
 void runProgram() {
-  //Serial.print("startTimer"); Serial.println(startTimer);
-  if (!isWorking && !startTimer && bekleme == 0) {
+/*  Serial.print("startTimer"); Serial.println(startTimer);
+ Serial.print("isWorking"); Serial.println(isWorking);
+ Serial.print("bekleme"); Serial.println(bekleme);
+  */
+  if (isWorking && !startTimer && bekleme == 0) {
 
     // 1.adım İndirme işemini başlat
     //Serial.println("1.adım İndirme işemini başlat");
@@ -318,6 +321,10 @@ void runProgram() {
     if (wayToTruck() != 0) { //sayac 0 ise stop geldi
       // Lamba aşşağı bitti mesajını konsola yolla ki motoru durdursun
       Serial.println("Lift motoru durdur");
+      mySerial.print("<LMD0>");
+      delay(5);
+      mySerial.print("<LMD0>");
+      delay(5);
       mySerial.print("<LMD0>");
       delay(500);
 

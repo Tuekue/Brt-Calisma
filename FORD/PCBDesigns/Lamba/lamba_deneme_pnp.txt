@@ -1,0 +1,69 @@
+*Pick And Place List
+*Company=
+*Author=
+*eMail=
+*
+*Project=lamba_deneme
+*Date=13:20:40
+*CreatedBy=Fritzing 0.9.3b.04.19.5c895d327c44a3114e5fcc9d8260daf0cbb52806
+*
+*
+*Coordinates in mm, always center of component
+*Origin 0/0=Lower left corner of PCB
+*Rotation in degree (0-360, math. pos.)
+*
+*No;Value;Package;X;Y;Rotation;Side;Name
+1;;to-39;6.11563;-4.65667;0;Bottom;U2
+2;;;21.9964;-18.2255;0;Bottom;Copper Fill53
+3;;;2.0574;-37.9613;0;Bottom;Copper Fill47
+4;;;5.715;-22.5943;0;Bottom;Copper Fill34
+5;;;35.0012;-25.2613;0;Bottom;Copper Fill50
+6;;;44.196;-15.3553;0;Bottom;Copper Fill33
+7;;;24.4856;-23.4325;0;Bottom;Copper Fill31
+8;;;19.9136;-32.0177;0;Bottom;Copper Fill48
+9;;;31.8262;-25.2359;0;Bottom;Copper Fill35
+10;;;12.1666;-24.1691;0;Bottom;Copper Fill32
+11;;;23.1902;-6.9733;0;Bottom;Copper Fill55
+12;;cap-pth-5mm;13.7356;-35.1767;-90;Bottom;C2
+13;;Melf DO-213 AA [SMD];40.3868;-27.8638;90;Top;D1
+14;;dip;22.6256;-17.3567;90;Bottom;U1
+15;;;21.6408;-17.8953;0;Bottom;Via1
+16;;;25.0444;-7.4559;0;Bottom;Copper Fill41
+17;;;16.8656;-12.0279;0;Bottom;Copper Fill40
+18;;;44.196;-28.7157;0;Bottom;Copper Fill29
+19;;;40.4266;-50.7647;0;Bottom;HC-SR04 Sensor 1
+20;;;38.9636;-6.7701;0;Bottom;Copper Fill42
+21;;;4.57201;-18.5049;0;Bottom;Via3
+22;;;11.1506;-8.6243;0;Bottom;Copper Fill54
+23;;;2.3368;-11.3167;0;Bottom;Copper Fill39
+24;;;26.9748;-25.1343;0;Bottom;Copper Fill51
+25;;;24.6888;-24.6009;0;Bottom;Via4
+26;;;12.5222;-30.8747;0;Bottom;Copper Fill27
+27;;;5.7658;-15.9649;0;Bottom;Copper Fill37
+28;;;21.1328;-44.4383;0;Bottom;Copper Fill45
+29;;;16.6116;-27.7505;0;Bottom;Copper Fill26
+30;;cap-pth-5mm;44.2156;-28.7467;90;Bottom;C3
+31;;;30.1752;-2.4775;0;Bottom;Copper Fill57
+32;;;40.259;-15.6601;0;Bottom;Copper Fill52
+33;;;2.74321;-25.2105;0;Bottom;Via2
+34;;;2.84538;-42.9472;0;Bottom;Power plug1
+35;;;21.9456;-30.1381;0;Bottom;Copper Fill25
+36;;;33.5534;-3.7475;0;Bottom;Copper Fill56
+37;220;THT;36.5956;-31.3267;90;Bottom;R1
+38;;;17.7546;-30.2651;0;Bottom;Copper Fill49
+39;;;31.2166;-33.2115;0;Bottom;Copper Fill46
+40;;;40.132;-23.4325;0;Bottom;Copper Fill58
+41;;cap-pth-5mm;18.8156;-35.0967;90;Bottom;C1
+42;;;21.6408;-33.1353;0;Bottom;Via6
+43;;;17.5006;-4.8905;0;Bottom;Copper Fill43
+44;;THT;16.19;-27.5174;-180;Bottom;XTAL1
+45;;;29.5656;-7.53209;0;Bottom;Via7
+46;;;42.4688;-31.2303;0;Bottom;Copper Fill28
+47;;THT;28.9756;0.243335;90;Bottom;J3
+48;;;22.8346;-17.3619;0;Bottom;Copper Fill36
+49;;;21.5138;-24.8803;0;Bottom;Copper Fill30
+50;;;5.6134;-44.2605;0;Bottom;Copper Fill44
+51;;;8.22961;-27.6489;0;Bottom;Via5
+52;;;2.13361;-8.14169;0;Bottom;Via8
+53;;;38.7096;-31.9161;0;Bottom;Via9
+54;;;3.048;-13.5011;0;Bottom;Copper Fill38

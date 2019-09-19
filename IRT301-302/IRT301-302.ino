@@ -3,12 +3,11 @@
 #include <Wire.h>
 #include <LiquidCrystal_PCF8574.h>
 
-LiquidCrystal_PCF8574 lcd(0x20);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+//LiquidCrystal_PCF8574 lcd(0x20);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+LiquidCrystal_PCF8574 lcd(0x3F);  // set the LCD address to 0x27 for a 16 chars and 2 line display
 
-#define relay1Pin 2
-#define FAN1 13
-#define relay2Pin 11
-#define FAN2 12
+#define ILK_LAMBA_relay 9
+#define IKINCI_LAMBA_relay 10
 
 #define startPin 4
 #define stopPin 5
@@ -16,8 +15,10 @@ LiquidCrystal_PCF8574 lcd(0x20);  // set the LCD address to 0x27 for a 16 chars 
 #define minuteMinusPin 7
 #define singleDoublePin 8
 
-#define SINGLE_LAMP 9
-#define DOUBLE_LAMP 10
+//Ledler. çift kaset 
+#define TEK_KASET 11
+//Ledler. çift  kaset
+#define CIFT_KASET 12
 
 int minute;
 int second;
@@ -31,7 +32,7 @@ boolean isRunning = false;
 unsigned long lastUpdate = 0; // prev tick for seconds
 unsigned long updateInterval = 1000;  //For UpdateTimer. 1000 milisecond -> 1 second
 
-int lambSelection = 2;
+int lambSelection;
 
 unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
 unsigned long debounceDelay = 10;    // the debounce time in ms. increase if the output flickers
@@ -41,13 +42,13 @@ Bounce minPlusDebouncer = Bounce();
 Bounce minMinusDebouncer = Bounce();
 Bounce startDebouncer = Bounce();
 Bounce stopDebouncer = Bounce();
-Bounce lampDebouncer = Bounce();
+Bounce lambaDebouncer = Bounce();
 
 int minPlusRead;
 int minMinusRead;
 int startReading;
 int stopReading;
-int lampReading;
+int lambaReading;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // EOF declerations
@@ -98,18 +99,9 @@ void StopExecute()
   UpdateTimer();
 
   // roleleri kapat
-  digitalWrite(relay2Pin, HIGH);
+  digitalWrite(IKINCI_LAMBA_relay, HIGH);
   delay(10);
-  digitalWrite(FAN2, HIGH);
-  
-  
-  delay(10);
-  digitalWrite(relay1Pin, HIGH);
-  delay(10);
-  digitalWrite(FAN1, HIGH);
-    
-
-
+  digitalWrite(ILK_LAMBA_relay, HIGH);
 }
 
 void ReadStartPin()
@@ -125,33 +117,28 @@ void ReadStartPin()
   /*     
       if (lambSelection == 1) {
         Serial.println("Tek lamba ledi yakıldı");        
-       digitalWrite(DOUBLE_LAMP, LOW);
+       digitalWrite(CIFT_KASET, LOW);
         delay(10);
-        digitalWrite(SINGLE_LAMP, HIGH);
+        digitalWrite(TEK_KASET, HIGH);
        
       }
        */
-      digitalWrite(relay1Pin, LOW);
-      delay(10);
-      digitalWrite(FAN1, LOW);
+      digitalWrite(ILK_LAMBA_relay, LOW);
       
       Serial.println(lambSelection);
       if (lambSelection == 2) {
         Serial.println("Röle 2 Acildi");
-        digitalWrite(relay2Pin, LOW);
-        delay(10);
-        digitalWrite(FAN2, LOW);
+        digitalWrite(IKINCI_LAMBA_relay, LOW);
         /*
          delay(10);
         Serial.println("Çift lamba ledi yakıldı");
-        digitalWrite(SINGLE_LAMP, LOW);
+        digitalWrite(TEK_KASET, LOW);
          delay(10);
-        digitalWrite(DOUBLE_LAMP, HIGH);
+        digitalWrite(CIFT_KASET, HIGH);
         */
       }
     }
   }
-
 }
 
 void ReadStopPin()
@@ -170,28 +157,32 @@ void ReadStopPin()
 
 void ReadSingleDoublePin()
 {
-  if ( lampReading == HIGH ) {
+  if ( lambaReading == HIGH ) {
     //    Serial.println("Tek/Cift basildi. Running kontrol edilecek");
     //Basildi
-    // Eger calismiyorsa Tek/Cift lamp sectir
+    // Eger calismiyorsa Tek/Cift lamba sectir
     if (isRunning == false)
     {
       //      Serial.println("Tek/Cift basildi. Running kontrol done.");
       //Serial.println(lambSelection);
       if (lambSelection == 2)
       {
+        //Tek Kaset seçildi
         lambSelection = 1;
-        tekCiftYazi="TEK KASET " + minute + ":"+ second;
-        digitalWrite(SINGLE_LAMP, HIGH);
+        tekCiftYazi = "TEK KASET " + minute ;
+        tekCiftYazi = tekCiftYazi + ":" + second;
+        digitalWrite(TEK_KASET, HIGH); //Led high iken sönüyorsa değişecek
         delay(10);
-        digitalWrite(DOUBLE_LAMP, LOW);
+        digitalWrite(CIFT_KASET, LOW);
       
       } else {
+        //Çift Kaset seçildi
         lambSelection = 2;
-        tekCiftYazi="CIFT KASET " + minute + ":"+ second;
-        digitalWrite(DOUBLE_LAMP, HIGH);
+        tekCiftYazi = "CIFT KASET " + minute ;
+        tekCiftYazi = tekCiftYazi + ":"+ second;
+        digitalWrite(CIFT_KASET, HIGH);
         delay(10);
-        digitalWrite(SINGLE_LAMP, LOW);
+        digitalWrite(TEK_KASET, LOW);
       }
         showDisplay(ustSatir, tekCiftYazi);
     }
@@ -222,8 +213,8 @@ void minutePlusMinus()
   stopDebouncer.update();
   stopReading = stopDebouncer.fell();
 
-  lampDebouncer.update();
-  lampReading = lampDebouncer.fell();
+  lambaDebouncer.update();
+  lambaReading = lambaDebouncer.fell();
 }
 
 void setup()
@@ -250,25 +241,19 @@ void setup()
 
   lcd.begin(16, 2); // initialize the lcd
 
-  pinMode(relay1Pin, OUTPUT);
-  pinMode(relay2Pin, OUTPUT);
-  pinMode(FAN1, OUTPUT);
-  pinMode(FAN2, OUTPUT);
-
-  digitalWrite(relay1Pin, HIGH);
-  delay(10);
-  digitalWrite(relay2Pin, HIGH);
-  delay(10);
-  digitalWrite(FAN1, HIGH);
-  delay(10);
-  digitalWrite(FAN2, HIGH);
-
-  pinMode(SINGLE_LAMP,OUTPUT);
-  pinMode(DOUBLE_LAMP,OUTPUT);
-
-  digitalWrite(SINGLE_LAMP, LOW);
-  delay(10);
-  digitalWrite(DOUBLE_LAMP, HIGH);
+  pinMode(ILK_LAMBA_relay, OUTPUT);
+  pinMode(IKINCI_LAMBA_relay, OUTPUT);
+  
+  digitalWrite(ILK_LAMBA_relay, HIGH);
+  digitalWrite(IKINCI_LAMBA_relay, HIGH);
+  
+  pinMode(TEK_KASET,OUTPUT);
+  pinMode(CIFT_KASET,OUTPUT);
+  
+  //İlk çalışmada iki kaset default
+  lambSelection = 2;
+  digitalWrite(TEK_KASET, LOW);
+  digitalWrite(CIFT_KASET, HIGH);
 
   showDisplay(ustSatir," 0532 376 23 44 ");
   delay(1000);
@@ -287,8 +272,8 @@ void setup()
   stopDebouncer.attach(stopPin);
   stopDebouncer.interval(debounceDelay);
 
-  lampDebouncer.attach(singleDoublePin);
-  lampDebouncer.interval(debounceDelay);
+  lambaDebouncer.attach(singleDoublePin);
+  lambaDebouncer.interval(debounceDelay);
 
   minPlusDebouncer.attach(minutePlusPin);
   minPlusDebouncer.interval(debounceDelay);
@@ -299,7 +284,7 @@ void setup()
   // Tuslar ve bekleme süreleri ayarlaniyor
   /////////////////////////////////////////
 
-  digitalWrite(DOUBLE_LAMP,HIGH);
+  digitalWrite(CIFT_KASET,HIGH);
 
   StopExecute();
 
@@ -328,10 +313,10 @@ void  loop()
     }
   } else {
     //Sistem durmus. Degisiklik yapilabilir.
-	minutePlusMinus()
+	minutePlusMinus();
 	ReadStartPin();
 	ReadStopPin();
 	ReadSingleDoublePin();
-    SetTime();
+  SetTime();
   }
 }

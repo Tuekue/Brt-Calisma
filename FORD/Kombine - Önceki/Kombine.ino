@@ -43,7 +43,7 @@ NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
 
 //clock=SCK data=MOSI CS=MISO
 U8G2_ST7920_128X64_1_SW_SPI u8g2(U8G2_R0, /* clock=*/ 52, /* data=*/ 51, /* CS=*/ 50, /* reset=*/ 53);
-// --BRS olan yerler değiştirilerek diğer lcd için  çalışması sağlanabilir.
+// --BRS
 //I2C_graphical_LCD_display lcd;
 
 //const uint8_t BUTTON_PINS[NumOfButtons] = {4, 5, 6, 7, 2, 3, A4, A5};
@@ -94,7 +94,7 @@ void setup() {
     buttons[i].interval(10);              // interval in ms
   }
 
-/////////////////////////////////////////   Röle ayarları   ////////////////////////////////
+  //============== Röle ayarları ==============
   pinMode(LampRelay, OUTPUT);
   //pinMode(FanRelay, OUTPUT);
   digitalWrite(LampRelay, HIGH);
@@ -106,19 +106,17 @@ void setup() {
   pinMode(LiftDownRelay, OUTPUT);
   digitalWrite(LiftDownRelay, HIGH);
 
-/////////////////////////////////////////   default values   ////////////////////////////////
-
-  LCDOperationTime = 6; //Calisma suresi 6 dk default LCD de gösterim
-  sicaklik = 110; //110 derece çalışma sıcaklığı default değer
-  minDistance = 60; //Çalışmaya başlama mesafesi cm
- 
-/////////////////////////////////////////   initial values   ////////////////////////////////
+  //==============   default values   ==============
   isWorking = false;
-  Start = 0; //0 Stop, 1 Start  
+  Start = 0; //0 Stop, 1 Start
+  minDistance = 70; // cm LCD de gösterim
+  LCDOperationTime = 4; //Calisma suresi 4 dk default LCD de gösterim
 
-  minute = LCDOperationTime; //Calisma suresi 6 dk default  
-  heatSet = sicaklik ; //100 derece default değer
+  sicaklik = 90; //90 derece default değer
+  heatSet = sicaklik ; //90 derece default değer
   isi = 0;
+  minDistance = 70; //Çalışmaya başlama mesafesi cm
+  minute = LCDOperationTime; //Calisma suresi 4 dk default
   second = 0;
   countDown = minute * 60; //Saniye olarak sayaç
 
@@ -126,9 +124,9 @@ void setup() {
   isLiftDown = false;
   isTimerRun = false;
   isTimerEnd = false;
- 
+  /////////////////////////////////////////   default values   ////////////////////////////////
+
   // --BRS
-  ////////////////////////////// LCD ilklendirme ///////////////////////////////
   //lcd.begin();
   u8g2.begin();
   u8g2.setFontMode(0);
@@ -186,9 +184,7 @@ ISR(TIMER1_COMPA_vect) {
       }
     }
   }
-  //Bir sonraki aracı beklemeye başladığında lift up işlemi de başlar. 
-  //Stop Switche gelse bile liftup da kalacağından önemli.
-  //1 dk sonra liftup rölesini bırakacak. Liftin yukarı çıkmayı tamamlaması için 1 dk süre
+  //1 dk sonra liftup rölesini bırakacak. Liftin yukarı çıkması için
   if (bekleme > 0 && millis() >= bekleme + 60000) // 1 dk = 60 sn x 1000 ms
   {
     Serial.println("Stop&Reset");
